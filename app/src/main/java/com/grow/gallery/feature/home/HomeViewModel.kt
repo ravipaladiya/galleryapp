@@ -1,5 +1,6 @@
 package com.grow.gallery.feature.home
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.grow.gallery.core.media.*
@@ -20,6 +21,9 @@ data class HomeUiState(
     val selectedItems: Set<Long> = emptySet(),
     val isSelectionMode: Boolean = false,
     val totalCount: Int = 0,
+    val shareUris: List<Uri>? = null,
+    val showDeleteConfirm: Boolean = false,
+    val snackbarMessage: String? = null,
 )
 
 @HiltViewModel
@@ -117,5 +121,67 @@ class HomeViewModel @Inject constructor(
             .map { it.id }
             .toSet()
         _uiState.update { it.copy(selectedItems = allIds) }
+    }
+
+    fun prepareShare() {
+        val selectedIds = _uiState.value.selectedItems
+        val uris = _uiState.value.mediaGroups
+            .flatMap { it.items }
+            .filter { it.id in selectedIds }
+            .map { it.uri }
+        _uiState.update { it.copy(shareUris = uris) }
+    }
+
+    fun onShareHandled() {
+        _uiState.update { it.copy(shareUris = null) }
+    }
+
+    fun requestDeleteSelected() {
+        _uiState.update { it.copy(showDeleteConfirm = true) }
+    }
+
+    fun cancelDelete() {
+        _uiState.update { it.copy(showDeleteConfirm = false) }
+    }
+
+    fun confirmDeleteSelected() {
+        val selectedIds = _uiState.value.selectedItems
+        val items = _uiState.value.mediaGroups
+            .flatMap { it.items }
+            .filter { it.id in selectedIds }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(showDeleteConfirm = false) }
+            val result = mediaRepository.deleteMedia(items)
+            if (result.isSuccess) {
+                exitSelectionMode()
+                loadMedia()
+                _uiState.update { it.copy(snackbarMessage = "${items.size} item(s) deleted") }
+            } else {
+                _uiState.update { it.copy(snackbarMessage = "Delete failed: ${result.exceptionOrNull()?.message}") }
+            }
+        }
+    }
+
+    fun favoriteSelected() {
+        val selectedIds = _uiState.value.selectedItems
+        val items = _uiState.value.mediaGroups
+            .flatMap { it.items }
+            .filter { it.id in selectedIds }
+
+        viewModelScope.launch {
+            val allFavorited = items.all { it.isFavorite }
+            items.forEach { item ->
+                mediaRepository.setFavorite(item, !allFavorited)
+            }
+            exitSelectionMode()
+            loadMedia()
+            val action = if (allFavorited) "removed from" else "added to"
+            _uiState.update { it.copy(snackbarMessage = "${items.size} item(s) $action favorites") }
+        }
+    }
+
+    fun onSnackbarShown() {
+        _uiState.update { it.copy(snackbarMessage = null) }
     }
 }

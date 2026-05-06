@@ -41,7 +41,6 @@ sealed class Screen(val route: String) {
     object MapView : Screen("map")
     object Backup : Screen("backup")
     object AppLock : Screen("applock")
-    object Backup : Screen("backup")
 }
 
 val bottomNavRoutes = setOf(
