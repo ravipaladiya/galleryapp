@@ -27,7 +27,18 @@ jobs:
           gradle-version: '8.9'
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        id: build
+        run: |
+          set -o pipefail
+          gradle :app:assembleDebug --no-daemon --stacktrace 2>&1 | tee /tmp/build.log
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: /tmp/build.log
+          retention-days: 7
 
       - name: Locate APK and rename
         id: apk
@@ -87,7 +98,6 @@ jobs:
             exit 0
           fi
           SHORT_SHA="${COMMIT_SHA:0:7}"
-          # Direct download URL = release page; Slack rejects unfurling of asset URLs but the page link is fine
           PAYLOAD=$(jq -n \
             --arg apk         "$APK_NAME" \
             --arg size        "$APK_SIZE" \
@@ -158,10 +168,7 @@ jobs:
                   --arg branch "$BRANCH" \
                   --arg sha    "$SHORT_SHA" \
                   '{
-                    text: ":x: GalleryApp build failed on \($branch) (\($sha))",
+                    text: ":x: GalleryApp build failed on \($branch) (\($sha)) — auto-fix attempting",
                     blocks: [
                       { type: "section", text: { type: "mrkdwn",
-                        text: ":x: *GalleryApp build failed* on `\($branch)` @ \($sha)\n<https://github.com/\($repo)/actions/runs/\($run_id)|View logs>" } }
-                    ]
-                  }')" \
-               "$WEBHOOK" || true
+                        text: ":x: *Gal
