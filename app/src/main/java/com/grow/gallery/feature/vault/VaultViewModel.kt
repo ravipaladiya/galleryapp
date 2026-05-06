@@ -80,6 +80,8 @@ class VaultViewModel @Inject constructor(
         }
     }
 
+
+    fun unlockWithBiometric() {
     fun unlockWithBiometric() {
         viewModelScope.launch {
             val items = vaultDao.getAllVaultItems()

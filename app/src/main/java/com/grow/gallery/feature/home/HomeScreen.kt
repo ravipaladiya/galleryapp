@@ -198,6 +198,7 @@ fun HomeScreen(
                         onItemLongClick = { item -> viewModel.enterSelectionMode(item.id) },
                         contentPadding = paddingValues,
                         selectionMode = uiState.isSelectionMode,
+                        gridSize = uiState.gridSize,
                     )
                 }
             }
@@ -249,9 +250,10 @@ private fun MediaTimeline(
     onItemLongClick: (MediaItem) -> Unit,
     contentPadding: PaddingValues,
     selectionMode: Boolean = false,
+    gridSize: Int = 3,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
+        columns = GridCells.Fixed(gridSize.coerceIn(2, 5)),
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding(),
             bottom = contentPadding.calculateBottomPadding() + if (selectionMode) 80.dp else 16.dp,

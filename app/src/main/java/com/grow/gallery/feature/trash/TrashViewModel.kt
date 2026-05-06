@@ -1,8 +1,6 @@
 package com.grow.gallery.feature.trash
 
-import android.app.Activity
 import android.app.PendingIntent
-import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -41,8 +39,9 @@ class TrashViewModel @Inject constructor(
         viewModelScope.launch { trashDao.deleteExpired() }
     }
 
-    fun load() {
+    private fun load() {
         viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
             val items = trashDao.getAllTrashItems()
             _uiState.update { it.copy(items = items, isLoading = false) }
         }
@@ -52,7 +51,7 @@ class TrashViewModel @Inject constructor(
         viewModelScope.launch {
             trashDao.deleteById(item.mediaId)
             load()
-            _uiState.update { it.copy(snackbarMessage = "${item.displayName} restored") }
+            _uiState.update { it.copy(snackbarMessage = "${item.displayName} removed from Recently Deleted.") }
         }
     }
 
@@ -64,10 +63,8 @@ class TrashViewModel @Inject constructor(
                     val pendingIntent = MediaStore.createDeleteRequest(
                         context.contentResolver, listOf(uri)
                     )
-                    _uiState.update {
-                        it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = item)
-                    }
-                } catch (e: Exception) {
+                    _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = item) }
+                } catch (_: Exception) {
                     deleteFromDbOnly(item)
                 }
             } else {
@@ -84,38 +81,46 @@ class TrashViewModel @Inject constructor(
     }
 
     fun onDeleteResult(confirmed: Boolean) {
-        val item = _uiState.value.pendingDeleteItem ?: return
+        val item = _uiState.value.pendingDeleteItem
         _uiState.update { it.copy(pendingDeleteItem = null) }
         if (confirmed) {
-            viewModelScope.launch { deleteFromDbOnly(item) }
+            viewModelScope.launch {
+                if (item != null) {
+                    deleteFromDbOnly(item)
+                    _uiState.update { it.copy(snackbarMessage = "${item.displayName} permanently deleted.") }
+                } else {
+                    emptyTrashFromDbOnly()
+                    _uiState.update { it.copy(snackbarMessage = "Trash emptied.") }
+                }
+            }
+        }
+    }
+
+    fun emptyTrash() {
+        viewModelScope.launch {
+            val items = _uiState.value.items
+            if (items.isEmpty()) return@launch
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val uris = items.map { Uri.parse(it.uri) }
+                    val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, uris)
+                    _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = null) }
+                    return@launch
+                } catch (_: Exception) {}
+            }
+            withContext(Dispatchers.IO) {
+                items.forEach { item ->
+                    try { context.contentResolver.delete(Uri.parse(item.uri), null, null) } catch (_: Exception) {}
+                }
+            }
+            emptyTrashFromDbOnly()
+            _uiState.update { it.copy(snackbarMessage = "Trash emptied.") }
         }
     }
 
     private suspend fun deleteFromDbOnly(item: TrashItem) {
         trashDao.deleteById(item.mediaId)
         load()
-    }
-
-    fun emptyTrash() {
-        viewModelScope.launch {
-            val items = _uiState.value.items
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                try {
-                    val uris = items.map { Uri.parse(it.uri) }
-                    val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, uris)
-                    _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = null) }
-                } catch (_: Exception) {
-                    emptyTrashFromDbOnly()
-                }
-            } else {
-                withContext(Dispatchers.IO) {
-                    items.forEach { item ->
-                        try { context.contentResolver.delete(Uri.parse(item.uri), null, null) } catch (_: Exception) {}
-                    }
-                }
-                emptyTrashFromDbOnly()
-            }
-        }
     }
 
     private suspend fun emptyTrashFromDbOnly() {

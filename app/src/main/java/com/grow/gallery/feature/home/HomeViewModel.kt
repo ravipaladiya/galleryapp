@@ -5,6 +5,9 @@ import android.net.Uri
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.grow.gallery.core.common.DataStoreManager
+import com.grow.gallery.core.database.TrashDao
+import com.grow.gallery.core.database.TrashItem
 import com.grow.gallery.core.media.*
 import com.grow.gallery.core.permissions.MediaPermissionState
 import com.grow.gallery.core.permissions.PermissionManager
@@ -28,6 +31,8 @@ data class HomeUiState(
     val shareUris: List<Uri>? = null,
     val showDeleteConfirm: Boolean = false,
     val snackbarMessage: String? = null,
+    val gridSize: Int = 3,
+    val hideScreenshots: Boolean = false,
     /** Non-null on Android R+ while waiting for the system delete confirmation dialog. */
     val pendingDeleteIntent: PendingIntent? = null,
     /** Items queued for deletion — preserved across the async R+ confirmation flow. */
@@ -39,6 +44,8 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val permissionManager: PermissionManager,
+    private val dataStoreManager: DataStoreManager,
+    private val trashDao: TrashDao,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(HomeUiState())
@@ -51,7 +58,22 @@ class HomeViewModel @Inject constructor(
 
     init {
         observeExternalMediaChanges()
+        observeSettings()
         loadMedia()
+    }
+
+    private fun observeSettings() {
+        viewModelScope.launch {
+            dataStoreManager.gridSize.collect { size ->
+                _uiState.update { it.copy(gridSize = size) }
+            }
+        }
+        viewModelScope.launch {
+            dataStoreManager.hideScreenshots.collect { hide ->
+                _uiState.update { it.copy(hideScreenshots = hide) }
+                loadMedia()
+            }
+        }
     }
 
     private fun observeExternalMediaChanges() {
@@ -84,6 +106,7 @@ class HomeViewModel @Inject constructor(
                 val query = MediaQuery(
                     sortOrder = _sortOrder.value,
                     filter = _filter.value,
+                    hideScreenshots = _uiState.value.hideScreenshots,
                 )
                 val groups = mediaRepository.loadMedia(query)
                 val total = groups.sumOf { it.items.size }
@@ -170,8 +193,21 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(showDeleteConfirm = false) }
 
+            // Track in trash DB before deleting
+            items.forEach { item ->
+                trashDao.insertTrashItem(
+                    TrashItem(
+                        mediaId = item.id,
+                        uri = item.uri.toString(),
+                        displayName = item.displayName,
+                        mimeType = item.mimeType,
+                        size = item.size,
+                        originalPath = item.bucketName,
+                    )
+                )
+            }
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // On Android 11+, the system must show a confirmation dialog.
                 val pendingIntent = try {
                     mediaRepository.prepareDelete(items)
                 } catch (e: Exception) {
@@ -180,12 +216,11 @@ class HomeViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItems = items) }
             } else {
-                // Pre-Android 11: delete directly.
                 val result = mediaRepository.deleteMedia(items)
                 if (result.isSuccess) {
                     exitSelectionMode()
                     loadMedia()
-                    _uiState.update { it.copy(snackbarMessage = "${items.size} item(s) deleted") }
+                    _uiState.update { it.copy(snackbarMessage = "${items.size} item(s) moved to Recently Deleted") }
                 } else {
                     _uiState.update {
                         it.copy(snackbarMessage = "Delete failed: ${result.exceptionOrNull()?.message}")
@@ -207,7 +242,7 @@ class HomeViewModel @Inject constructor(
         if (confirmed) {
             exitSelectionMode()
             loadMedia()
-            _uiState.update { it.copy(snackbarMessage = "$count item(s) deleted") }
+            _uiState.update { it.copy(snackbarMessage = "$count item(s) moved to Recently Deleted") }
         }
     }
 

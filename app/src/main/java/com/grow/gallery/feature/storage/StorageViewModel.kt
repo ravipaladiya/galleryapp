@@ -1,49 +1,81 @@
 package com.grow.gallery.feature.storage
 
+import android.content.Context
+import android.os.Environment
+import android.os.StatFs
+import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.grow.gallery.core.media.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class StorageUiState(
-    val photoSize: String = "Calculating…",
-    val videoSize: String = "Calculating…",
+    val totalBytes: Long = 0L,
+    val usedBytes: Long = 0L,
+    val freeBytes: Long = 0L,
+    val photosBytes: Long = 0L,
+    val videosBytes: Long = 0L,
+    val isLoading: Boolean = true,
 )
 
 @HiltViewModel
 class StorageViewModel @Inject constructor(
-    private val mediaRepository: MediaRepository,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(StorageUiState())
     val uiState: StateFlow<StorageUiState> = _uiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
-            try {
-                val storage = mediaRepository.computeStorageByType()
+        viewModelScope.launch { loadStorage() }
+    }
+
+    private suspend fun loadStorage() {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val stat = StatFs(Environment.getExternalStorageDirectory().path)
+                val total = stat.totalBytes
+                val free = stat.availableBytes
+                val used = total - free
+
+                val photosBytes = queryMediaSize(MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                val videosBytes = queryMediaSize(MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+
                 _uiState.update {
                     it.copy(
-                        photoSize = storage.photoBytes.formatSize(),
-                        videoSize = storage.videoBytes.formatSize(),
+                        totalBytes = total,
+                        usedBytes = used,
+                        freeBytes = free,
+                        photosBytes = photosBytes,
+                        videosBytes = videosBytes,
+                        isLoading = false,
                     )
                 }
-            } catch (_: Exception) {
-                _uiState.update { it.copy(photoSize = "Unknown", videoSize = "Unknown") }
+            }.onFailure {
+                _uiState.update { it.copy(isLoading = false) }
             }
         }
     }
 
-    private fun Long.formatSize(): String = when {
-        this >= 1_000_000_000L -> "%.1f GB".format(this / 1_000_000_000.0)
-        this >= 1_000_000L -> "%.1f MB".format(this / 1_000_000.0)
-        this >= 1_000L -> "%.0f KB".format(this / 1_000.0)
-        else -> "$this B"
+    private fun queryMediaSize(uri: android.net.Uri): Long {
+        var total = 0L
+        context.contentResolver.query(
+            uri,
+            arrayOf(MediaStore.MediaColumns.SIZE),
+            null, null, null,
+        )?.use { cursor ->
+            val sizeCol = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
+            if (sizeCol >= 0) {
+                while (cursor.moveToNext()) {
+                    total += cursor.getLong(sizeCol)
+                }
+            }
+        }
+        return total
     }
 }

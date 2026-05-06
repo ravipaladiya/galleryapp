@@ -13,8 +13,9 @@ import javax.inject.Inject
 
 data class AlbumDetailUiState(
     val items: List<MediaItem> = emptyList(),
-    val isLoading: Boolean = true,
     val sortOrder: SortOrder = SortOrder.NEWEST,
+    val showSortSheet: Boolean = false,
+    val isLoading: Boolean = true,
     val error: String? = null,
 )
 
@@ -34,9 +35,12 @@ class AlbumDetailViewModel @Inject constructor(
     }
 
     fun setSortOrder(order: SortOrder) {
-        _uiState.update { it.copy(sortOrder = order) }
+        _uiState.update { it.copy(sortOrder = order, showSortSheet = false) }
         reload()
     }
+
+    fun showSortSheet() { _uiState.update { it.copy(showSortSheet = true) } }
+    fun dismissSortSheet() { _uiState.update { it.copy(showSortSheet = false) } }
 
     private fun reload() {
         if (currentAlbumId < 0) return

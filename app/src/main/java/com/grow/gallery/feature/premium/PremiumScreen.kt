@@ -34,9 +34,13 @@ fun PremiumScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedPlan by remember { mutableStateOf<PremiumPlan?>(uiState.plans.firstOrNull { it.isBestValue }) }
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(uiState.plans) {
         if (selectedPlan == null) selectedPlan = uiState.plans.firstOrNull { it.isBestValue }
+    }
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let { snackbarHostState.showSnackbar(it) }
     }
 
     Scaffold(
@@ -47,6 +51,7 @@ fun PremiumScreen(
                 containerColor = Color.Transparent,
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { paddingValues ->
         LazyColumn(
             modifier = Modifier

@@ -28,9 +28,16 @@ fun AlbumDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    var showSortSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(albumId) { viewModel.loadAlbumMedia(albumId) }
+
+    if (uiState.showSortSheet) {
+        SortBottomSheet(
+            current = uiState.sortOrder,
+            onSelect = viewModel::setSortOrder,
+            onDismiss = viewModel::dismissSortSheet,
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -42,10 +49,13 @@ fun AlbumDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { onOpenSlideshow(albumId) }) {
+                    IconButton(
+                        onClick = { onOpenSlideshow(albumId) },
+                        enabled = uiState.items.isNotEmpty(),
+                    ) {
                         Icon(Icons.Default.PlayCircle, "Slideshow")
                     }
-                    IconButton(onClick = { showSortSheet = true }) {
+                    IconButton(onClick = viewModel::showSortSheet) {
                         Icon(Icons.Default.FilterList, "Sort")
                     }
                 },
@@ -90,47 +100,28 @@ fun AlbumDetailScreen(
             }
         }
     }
-
-    if (showSortSheet) {
-        SortBottomSheet(
-            currentOrder = uiState.sortOrder,
-            onSelect = { order ->
-                viewModel.setSortOrder(order)
-                showSortSheet = false
-            },
-            onDismiss = { showSortSheet = false },
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SortBottomSheet(
-    currentOrder: SortOrder,
+    current: SortOrder,
     onSelect: (SortOrder) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val options = listOf(
-        SortOrder.NEWEST to "Newest First",
-        SortOrder.OLDEST to "Oldest First",
-        SortOrder.SIZE_DESC to "Largest First",
-        SortOrder.SIZE_ASC to "Smallest First",
-    )
-
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+        Column(modifier = Modifier.padding(bottom = Spacing.xl)) {
             Text(
                 "Sort By",
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.md),
+                modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
             )
-            options.forEach { (order, label) ->
+            sortOptions.forEach { (order, label, icon) ->
                 ListItem(
                     headlineContent = { Text(label) },
+                    leadingContent = { Icon(icon, null) },
                     trailingContent = {
-                        if (currentOrder == order) {
-                            Icon(Icons.Default.Check, null, tint = Brand.Blue)
-                        }
+                        if (current == order) Icon(Icons.Default.Check, null, tint = Brand.Blue)
                     },
                     modifier = Modifier.clickable { onSelect(order) },
                 )
@@ -138,3 +129,10 @@ private fun SortBottomSheet(
         }
     }
 }
+
+private val sortOptions = listOf(
+    Triple(SortOrder.NEWEST, "Newest First", Icons.Default.ArrowDownward),
+    Triple(SortOrder.OLDEST, "Oldest First", Icons.Default.ArrowUpward),
+    Triple(SortOrder.SIZE_DESC, "Largest First", Icons.Default.Storage),
+    Triple(SortOrder.SIZE_ASC, "Smallest First", Icons.Default.Storage),
+)

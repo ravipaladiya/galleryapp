@@ -1,7 +1,5 @@
 package com.grow.gallery.feature.storage
 
-import android.os.Environment
-import android.os.StatFs
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,19 +23,20 @@ import com.grow.gallery.core.designsystem.components.*
 @Composable
 fun StorageScreen(
     onNavigateUp: () -> Unit,
-    onOpenCleaner: () -> Unit,
-    onOpenTrash: () -> Unit,
+    onOpenCleaner: () -> Unit = {},
+    onOpenTrash: () -> Unit = {},
     viewModel: StorageViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val stat = remember { StatFs(Environment.getExternalStorageDirectory().path) }
-    val totalBytes = remember { stat.totalBytes }
-    val freeBytes = remember { stat.availableBytes }
-    val usedBytes = remember { totalBytes - freeBytes }
 
     Scaffold(
         topBar = { GalleryTopBar(title = "Storage Manager", onNavigateUp = onNavigateUp) },
     ) { paddingValues ->
+        if (uiState.isLoading) {
+            LoadingScreen(Modifier.padding(paddingValues))
+            return@Scaffold
+        }
+
         LazyColumn(
             contentPadding = PaddingValues(
                 top = paddingValues.calculateTopPadding(),
@@ -61,15 +60,18 @@ fun StorageScreen(
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(Modifier.height(Spacing.xl))
-                        StorageProgressBar(usedBytes = usedBytes, totalBytes = totalBytes)
+                        StorageProgressBar(
+                            usedBytes = uiState.usedBytes,
+                            totalBytes = uiState.totalBytes,
+                        )
                         Spacer(Modifier.height(Spacing.xl))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                         ) {
-                            StorageStat("Used", usedBytes.formatSize(), Brand.Blue)
-                            StorageStat("Free", freeBytes.formatSize(), Color(0xFF43A047))
-                            StorageStat("Total", totalBytes.formatSize(), MaterialTheme.colorScheme.onSurfaceVariant)
+                            StorageStat("Used", uiState.usedBytes.formatSize(), Brand.Blue)
+                            StorageStat("Free", uiState.freeBytes.formatSize(), Color(0xFF43A047))
+                            StorageStat("Total", uiState.totalBytes.formatSize(), MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -80,7 +82,8 @@ fun StorageScreen(
                 StorageTypeRow(
                     icon = Icons.Default.Photo,
                     label = "Photos",
-                    size = uiState.photoSize,
+                    size = uiState.photosBytes.formatSize(),
+                    fraction = if (uiState.totalBytes > 0) uiState.photosBytes.toFloat() / uiState.totalBytes else 0f,
                     color = Brand.Blue,
                 )
             }
@@ -88,8 +91,19 @@ fun StorageScreen(
                 StorageTypeRow(
                     icon = Icons.Default.VideoFile,
                     label = "Videos",
-                    size = uiState.videoSize,
+                    size = uiState.videosBytes.formatSize(),
+                    fraction = if (uiState.totalBytes > 0) uiState.videosBytes.toFloat() / uiState.totalBytes else 0f,
                     color = Color(0xFF7C3AED),
+                )
+            }
+            item {
+                val other = (uiState.usedBytes - uiState.photosBytes - uiState.videosBytes).coerceAtLeast(0L)
+                StorageTypeRow(
+                    icon = Icons.Default.FolderOpen,
+                    label = "Other Files",
+                    size = other.formatSize(),
+                    fraction = if (uiState.totalBytes > 0) other.toFloat() / uiState.totalBytes else 0f,
+                    color = Color(0xFFD97706),
                 )
             }
 
@@ -105,8 +119,8 @@ fun StorageScreen(
             }
             item {
                 SettingRow(
-                    title = "Empty Trash",
-                    subtitle = "Permanently delete trashed items",
+                    title = "Recently Deleted",
+                    subtitle = "Manage deleted items",
                     leading = { Icon(Icons.Default.Delete, null) },
                     trailing = { Icon(Icons.Default.ChevronRight, null) },
                     onClick = onOpenTrash,
@@ -119,7 +133,11 @@ fun StorageScreen(
 @Composable
 private fun StorageProgressBar(usedBytes: Long, totalBytes: Long) {
     val fraction = (usedBytes.toFloat() / totalBytes.coerceAtLeast(1)).coerceIn(0f, 1f)
-    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val color = when {
+        fraction > 0.9f -> MaterialTheme.colorScheme.error
+        fraction > 0.7f -> Color(0xFFD97706)
+        else -> Brand.Blue
+    }
 
     Column {
         Box(
@@ -127,14 +145,14 @@ private fun StorageProgressBar(usedBytes: Long, totalBytes: Long) {
                 .fillMaxWidth()
                 .height(20.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(surfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(fraction)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Brand.Blue),
+                    .background(color),
             )
         }
         Spacer(Modifier.height(Spacing.sm))
@@ -159,25 +177,46 @@ private fun StorageTypeRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     size: String,
+    fraction: Float,
     color: Color,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(color.copy(alpha = 0.15f), MaterialTheme.shapes.medium),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(Spacing.md))
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(size, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        }
+        Spacer(Modifier.height(4.dp))
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .background(color.copy(alpha = 0.15f), MaterialTheme.shapes.medium),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(color),
+            )
         }
-        Spacer(Modifier.width(Spacing.md))
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Text(size, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
     }
 }
 

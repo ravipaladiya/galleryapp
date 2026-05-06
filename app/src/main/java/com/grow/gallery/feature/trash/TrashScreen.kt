@@ -62,6 +62,7 @@ fun TrashScreen(
     }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             GalleryTopBar(
                 title = "Recently Deleted",
@@ -75,7 +76,6 @@ fun TrashScreen(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { paddingValues ->
         when {
             uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
@@ -116,7 +116,6 @@ fun TrashScreen(
                             modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                         )
                     }
-
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         contentPadding = PaddingValues(bottom = 16.dp),
@@ -166,10 +165,7 @@ fun TrashScreen(
 }
 
 @Composable
-private fun TrashMediaItem(
-    item: TrashItem,
-    onClick: () -> Unit,
-) {
+private fun TrashMediaItem(item: TrashItem, onClick: () -> Unit) {
     val daysLeft = ((item.expiresAt - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).coerceAtLeast(0)
 
     Box(

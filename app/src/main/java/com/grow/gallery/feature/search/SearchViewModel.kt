@@ -2,6 +2,7 @@ package com.grow.gallery.feature.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.grow.gallery.core.common.DataStoreManager
 import com.grow.gallery.core.media.MediaFilter
 import com.grow.gallery.core.media.MediaItem
 import com.grow.gallery.core.media.MediaRepository
@@ -21,12 +22,21 @@ data class SearchUiState(
 @HiltViewModel
 class SearchViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
+    private val dataStoreManager: DataStoreManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
     private var searchJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            dataStoreManager.recentSearches.collect { searches ->
+                _uiState.update { it.copy(recentSearches = searches) }
+            }
+        }
+    }
 
     fun onQueryChange(query: String) {
         _uiState.update { it.copy(query = query) }
@@ -36,7 +46,7 @@ class SearchViewModel @Inject constructor(
             return
         }
         searchJob = viewModelScope.launch {
-            delay(300) // debounce
+            delay(300)
             _uiState.update { it.copy(isLoading = true) }
             try {
                 val results = mediaRepository.searchMedia(query)
@@ -47,6 +57,10 @@ class SearchViewModel @Inject constructor(
                     MediaFilter.ALL -> results
                 }
                 _uiState.update { it.copy(results = filtered, isLoading = false) }
+                // Save to recents when we get results
+                if (filtered.isNotEmpty()) {
+                    dataStoreManager.addRecentSearch(query.trim())
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -60,5 +74,9 @@ class SearchViewModel @Inject constructor(
         if (_uiState.value.query.isNotBlank()) {
             onQueryChange(_uiState.value.query)
         }
+    }
+
+    fun clearRecentSearches() {
+        viewModelScope.launch { dataStoreManager.clearRecentSearches() }
     }
 }
