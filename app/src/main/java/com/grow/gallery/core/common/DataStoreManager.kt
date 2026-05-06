@@ -34,8 +34,9 @@ class DataStoreManager @Inject constructor(
         private val KEY_APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled_settings")
         private val KEY_APP_LOCK_BIOMETRIC = booleanPreferencesKey("app_lock_biometric")
         private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
-        private const val RECENT_SEARCHES_DELIMITER = "||"
-        private const val MAX_RECENT_SEARCHES = 10
+        // ASCII Unit Separator (non-typeable) avoids collision with user-typed text
+        private const val RECENT_SEARCHES_DELIMITER = ""
+        private const val MAX_RECENT_SEARCHES = 15
     }
 
     val appTheme: Flow<AppTheme> = dataStore.data.map { prefs ->
@@ -106,13 +107,24 @@ class DataStoreManager @Inject constructor(
 
     suspend fun addRecentSearch(query: String) {
         if (query.isBlank()) return
+        val trimmed = query.trim()
         dataStore.edit { prefs ->
             val current = prefs[KEY_RECENT_SEARCHES]
                 ?.split(RECENT_SEARCHES_DELIMITER)
-                ?.filter { it.isNotBlank() && it != query }
+                ?.filter { it.isNotBlank() && !it.equals(trimmed, ignoreCase = true) }
                 ?: emptyList()
-            val updated = listOf(query) + current
+            val updated = listOf(trimmed) + current
             prefs[KEY_RECENT_SEARCHES] = updated.take(MAX_RECENT_SEARCHES).joinToString(RECENT_SEARCHES_DELIMITER)
+        }
+    }
+
+    suspend fun removeRecentSearch(query: String) {
+        dataStore.edit { prefs ->
+            val current = prefs[KEY_RECENT_SEARCHES]
+                ?.split(RECENT_SEARCHES_DELIMITER)
+                ?.filter { it.isNotBlank() && !it.equals(query, ignoreCase = true) }
+                ?: emptyList()
+            prefs[KEY_RECENT_SEARCHES] = current.joinToString(RECENT_SEARCHES_DELIMITER)
         }
     }
 

@@ -2,6 +2,7 @@ package com.grow.gallery.feature.search
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
@@ -37,6 +38,11 @@ fun SearchScreen(
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
+    // Auto-focus the search field when the screen opens
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
     Scaffold(
         topBar = {
             Column(
@@ -55,11 +61,14 @@ fun SearchScreen(
                 OutlinedTextField(
                     value = uiState.query,
                     onValueChange = viewModel::onQueryChange,
-                    placeholder = { Text("Search photos, albums, dates…") },
+                    placeholder = { Text("Search photos, albums, dates...") },
                     leadingIcon = { Icon(Icons.Default.Search, "Search") },
                     trailingIcon = {
                         if (uiState.query.isNotBlank()) {
-                            IconButton(onClick = { viewModel.onQueryChange("") }) {
+                            IconButton(onClick = {
+                                viewModel.onQueryChange("")
+                                focusRequester.requestFocus()
+                            }) {
                                 Icon(Icons.Default.Clear, "Clear")
                             }
                         }
@@ -118,8 +127,12 @@ fun SearchScreen(
             uiState.query.isBlank() -> {
                 SearchSuggestions(
                     recentSearches = uiState.recentSearches,
-                    onQuerySelect = viewModel::onQueryChange,
+                    onQuerySelect = { query ->
+                        viewModel.onQueryChange(query)
+                        focusManager.clearFocus()
+                    },
                     onClearRecents = viewModel::clearRecentSearches,
+                    onRemoveRecent = viewModel::removeRecentSearch,
                     modifier = Modifier.padding(paddingValues),
                 )
             }
@@ -169,29 +182,47 @@ private fun SearchSuggestions(
     recentSearches: List<String>,
     onQuerySelect: (String) -> Unit,
     onClearRecents: () -> Unit,
+    onRemoveRecent: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (recentSearches.isNotEmpty()) {
-        Column(modifier = modifier) {
-            SectionHeader(
-                title = "Recent Searches",
-                trailing = {
-                    TextButton(onClick = onClearRecents) {
-                        Text("Clear", style = MaterialTheme.typography.labelSmall)
-                    }
-                },
-            )
-            recentSearches.forEach { query ->
+        LazyColumn(modifier = modifier) {
+            item {
+                SectionHeader(
+                    title = "Recent Searches",
+                    trailing = {
+                        TextButton(onClick = onClearRecents) {
+                            Text("Clear all", style = MaterialTheme.typography.labelSmall)
+                        }
+                    },
+                )
+            }
+            items(recentSearches, key = { it }) { query ->
                 ListItem(
                     headlineContent = { Text(query) },
-                    leadingContent = { Icon(Icons.Default.History, null) },
+                    leadingContent = {
+                        Icon(Icons.Default.History, contentDescription = null)
+                    },
                     trailingContent = {
-                        Icon(
-                            Icons.Default.NorthWest,
-                            null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp),
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = { onRemoveRecent(query) },
+                                modifier = Modifier.size(36.dp),
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Remove $query",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Icon(
+                                Icons.Default.NorthWest,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
                     },
                     modifier = Modifier.clickable { onQuerySelect(query) },
                 )
@@ -207,7 +238,7 @@ private fun SearchSuggestions(
         ) {
             Icon(
                 Icons.Default.Search,
-                null,
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.4f),
                 modifier = Modifier.size(72.dp),
             )

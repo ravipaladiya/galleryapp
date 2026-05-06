@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,11 +20,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Scale
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 import com.grow.gallery.core.media.MediaItem
@@ -45,11 +44,13 @@ fun MemoriesScreen(
             LargeTopAppBar(
                 title = { Text("Memories", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(
-                        onClick = onOpenSlideshow,
-                        enabled = uiState.memories.isNotEmpty() || uiState.onThisDay.isNotEmpty(),
-                    ) {
-                        Icon(Icons.Default.PlayCircle, "Slideshow")
+                    if (uiState.memories.isNotEmpty() || uiState.onThisDay.isNotEmpty()) {
+                        IconButton(onClick = onOpenSlideshow) {
+                            Icon(Icons.Default.PlayCircle, contentDescription = "Start slideshow")
+                        }
+                    }
+                    IconButton(onClick = viewModel::refresh) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                 },
                 colors = TopAppBarDefaults.largeTopAppBarColors(
@@ -63,6 +64,12 @@ fun MemoriesScreen(
     ) { paddingValues ->
         when {
             uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
+            uiState.error != null -> EmptyState(
+                icon = Icons.Default.ErrorOutline,
+                title = "Something went wrong",
+                description = uiState.error ?: "",
+                modifier = Modifier.padding(paddingValues),
+            )
             uiState.memories.isEmpty() && uiState.onThisDay.isEmpty() -> EmptyState(
                 icon = Icons.Default.AutoAwesome,
                 title = "No Memories Yet",
@@ -78,7 +85,7 @@ fun MemoriesScreen(
                     modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                 ) {
                     if (uiState.onThisDay.isNotEmpty()) {
-                        item {
+                        item(key = "on_this_day") {
                             OnThisDaySection(
                                 items = uiState.onThisDay,
                                 onOpenViewer = onOpenViewer,
@@ -86,10 +93,10 @@ fun MemoriesScreen(
                         }
                     }
 
-                    items(uiState.memories, key = { it.label }) { memory ->
+                    items(uiState.memories, key = { "${it.year}_${it.month}" }) { memory ->
                         MemoryCard(
                             memory = memory,
-                            onOpenViewer = onOpenViewer,
+                            onOpenViewer = { onOpenViewer(it.id, it.isVideo) },
                             onStartSlideshow = onOpenSlideshow,
                         )
                     }
@@ -124,7 +131,8 @@ private fun OnThisDaySection(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(item.uri)
                             .crossfade(true)
-                            .size(240)
+                            .size(240, 240)
+                            .scale(Scale.FILL)
                             .build(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
@@ -133,7 +141,7 @@ private fun OnThisDaySection(
                     if (item.isVideo) {
                         Icon(
                             Icons.Default.PlayCircle,
-                            null,
+                            contentDescription = null,
                             tint = Color.White,
                             modifier = Modifier
                                 .align(Alignment.Center)
@@ -150,29 +158,31 @@ private fun OnThisDaySection(
 @Composable
 private fun MemoryCard(
     memory: MemoryGroup,
-    onOpenViewer: (Long, Boolean) -> Unit,
+    onOpenViewer: (MediaItem) -> Unit,
     onStartSlideshow: () -> Unit,
 ) {
+    val firstItem = memory.items.firstOrNull() ?: return
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = Spacing.lg, vertical = Spacing.sm)
             .height(240.dp),
         shape = MaterialTheme.shapes.extraLarge,
-        onClick = { memory.items.firstOrNull()?.let { onOpenViewer(it.id, it.isVideo) } },
+        onClick = { onOpenViewer(firstItem) },
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            memory.items.firstOrNull()?.let { item ->
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(item.uri)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(firstItem.uri)
+                    .crossfade(true)
+                    .size(800, 480)
+                    .scale(Scale.FILL)
+                    .build(),
+                contentDescription = memory.label,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
 
             Box(
                 modifier = Modifier
@@ -210,7 +220,7 @@ private fun MemoryCard(
             ) {
                 Icon(
                     Icons.Default.PlayCircle,
-                    "Play slideshow",
+                    contentDescription = "Play slideshow for ${memory.label}",
                     tint = Color.White,
                     modifier = Modifier.size(40.dp),
                 )

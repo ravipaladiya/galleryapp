@@ -16,12 +16,14 @@ data class MemoryGroup(
     val label: String,
     val items: List<MediaItem>,
     val year: Int = 0,
+    val month: Int = 0,
 )
 
 data class MemoriesUiState(
     val memories: List<MemoryGroup> = emptyList(),
     val onThisDay: List<MediaItem> = emptyList(),
     val isLoading: Boolean = true,
+    val error: String? = null,
 )
 
 @HiltViewModel
@@ -34,46 +36,51 @@ class MemoriesViewModel @Inject constructor(
 
     init { loadMemories() }
 
+    fun refresh() = loadMemories()
+
     private fun loadMemories() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val groups = mediaRepository.loadMedia(MediaQuery(sortOrder = SortOrder.NEWEST))
                 val allItems = groups.flatMap { it.items }
 
-                // On this day - same month/day from previous years
-                val cal = Calendar.getInstance()
-                val currentMonth = cal.get(Calendar.MONTH)
-                val currentDay = cal.get(Calendar.DAY_OF_MONTH)
-                val currentYear = cal.get(Calendar.YEAR)
+                val now = Calendar.getInstance()
+                val currentMonth = now.get(Calendar.MONTH)
+                val currentDay = now.get(Calendar.DAY_OF_MONTH)
+                val currentYear = now.get(Calendar.YEAR)
 
                 val onThisDay = allItems.filter { item ->
-                    val itemCal = Calendar.getInstance().apply {
-                        timeInMillis = (item.dateTaken ?: item.dateAdded) * 1000
-                    }
+                    val ts = (item.dateTaken ?: item.dateAdded) * 1000L
+                    val itemCal = Calendar.getInstance().apply { timeInMillis = ts }
                     itemCal.get(Calendar.MONTH) == currentMonth &&
-                            itemCal.get(Calendar.DAY_OF_MONTH) == currentDay &&
-                            itemCal.get(Calendar.YEAR) < currentYear
+                        itemCal.get(Calendar.DAY_OF_MONTH) == currentDay &&
+                        itemCal.get(Calendar.YEAR) < currentYear
                 }
 
-                // Group by month/year for memories
+                // Group by year+month, sort newest first, require ≥5 photos per group
                 val memories = allItems
                     .groupBy { item ->
-                        val itemCal = Calendar.getInstance().apply {
-                            timeInMillis = (item.dateTaken ?: item.dateAdded) * 1000
-                        }
-                        val month = itemCal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault()) ?: ""
-                        val year = itemCal.get(Calendar.YEAR)
-                        Pair("Best of $month $year", year)
+                        val ts = (item.dateTaken ?: item.dateAdded) * 1000L
+                        val cal = Calendar.getInstance().apply { timeInMillis = ts }
+                        Pair(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH))
                     }
                     .entries
-                    .filter { it.value.size >= 5 } // only groups with enough photos
-                    .take(10)
-                    .map { (labelYear, items) ->
+                    .filter { it.value.size >= 5 }
+                    .sortedWith(compareByDescending<Map.Entry<Pair<Int, Int>, List<MediaItem>>> { it.key.first }
+                        .thenByDescending { it.key.second })
+                    .map { (yearMonth, items) ->
+                        val (year, month) = yearMonth
+                        val cal = Calendar.getInstance().apply {
+                            set(Calendar.YEAR, year)
+                            set(Calendar.MONTH, month)
+                        }
+                        val monthName = cal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault()) ?: ""
                         MemoryGroup(
-                            label = labelYear.first,
+                            label = "Best of $monthName $year",
                             items = items.take(20),
-                            year = labelYear.second,
+                            year = year,
+                            month = month,
                         )
                     }
 
@@ -81,7 +88,7 @@ class MemoriesViewModel @Inject constructor(
                     it.copy(memories = memories, onThisDay = onThisDay, isLoading = false)
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false) }
+                _uiState.update { it.copy(isLoading = false, error = "Could not load memories.") }
             }
         }
     }

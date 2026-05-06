@@ -12,7 +12,11 @@ class OnboardingViewModel @Inject constructor(
     private val dataStoreManager: DataStoreManager,
 ) : ViewModel() {
 
-    suspend fun completeOnboarding() {
-        dataStoreManager.setOnboardingDone(true)
+    fun completeOnboarding(onDone: () -> Unit) {
+        viewModelScope.launch {
+            // Await DataStore flush before navigating — avoids re-showing onboarding on slow devices
+            dataStoreManager.setOnboardingDone(true)
+            onDone()
+        }
     }
 }

@@ -1,6 +1,6 @@
 package com.grow.gallery.feature.onboarding
 
-import androidx.compose.animation.*
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -15,16 +15,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.grow.gallery.core.designsystem.Brand
+import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import com.grow.gallery.core.designsystem.ShapeButtonRound
 import com.grow.gallery.core.designsystem.Spacing
 import kotlinx.coroutines.launch
@@ -43,7 +44,7 @@ private val pages = listOf(
         icon = Icons.Default.PhotoLibrary,
         title = "Smart Gallery",
         description = "Your photos, beautifully organized.",
-        features = listOf("Auto date grouping", "Fast photo search", "Videos & photos in one place"),
+        features = listOf("Auto date grouping", "Fast photo search", "Videos and photos in one place"),
         gradientStart = Color(0xFF0052CC),
         gradientEnd = Color(0xFF0099FF),
     ),
@@ -51,15 +52,15 @@ private val pages = listOf(
         icon = Icons.Default.AutoAwesome,
         title = "AI-Powered Tools",
         description = "Edit and enhance with one tap.",
-        features = listOf("AI photo editor", "Crop, adjust & filter", "Batch operations"),
+        features = listOf("AI photo editor", "Crop, adjust and filter", "Batch operations"),
         gradientStart = Color(0xFF5B21B6),
         gradientEnd = Color(0xFF8B5CF6),
     ),
     OnboardingPage(
         icon = Icons.Default.Lock,
-        title = "Secure & Private",
+        title = "Secure and Private",
         description = "Your memories stay protected.",
-        features = listOf("Encrypted vault", "PIN & biometric lock", "Secure trash bin"),
+        features = listOf("Encrypted vault", "PIN and biometric lock", "Secure trash bin"),
         gradientStart = Color(0xFF065F46),
         gradientEnd = Color(0xFF10B981),
     ),
@@ -73,21 +74,43 @@ fun OnboardingScreen(
 ) {
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
+    var isNavigating by remember { mutableStateOf(false) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    val currentPage = pagerState.currentPage
+    val systemUiController = rememberSystemUiController()
+
+    SideEffect {
+        systemUiController.setStatusBarColor(Color.Transparent, darkIcons = false)
+        systemUiController.setNavigationBarColor(Color.Transparent, darkIcons = false)
+    }
+
+    // Back press navigates to previous page; exits to home on first page
+    BackHandler(enabled = currentPage > 0) {
+        scope.launch { pagerState.animateScrollToPage(currentPage - 1) }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .semantics {
+                contentDescription = "Onboarding screen ${currentPage + 1} of ${pages.size}"
+            },
+    ) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = true,
         ) { page ->
             OnboardingPageContent(page = pages[page])
         }
 
-        // Bottom controls
+        // Bottom controls — safe-inset-aware
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = Spacing.xl, end = Spacing.xl, bottom = 52.dp),
+                .navigationBarsPadding()
+                .padding(start = Spacing.xl, end = Spacing.xl, bottom = Spacing.xxxl),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Page indicators
@@ -97,9 +120,9 @@ fun OnboardingScreen(
             ) {
                 pages.indices.forEach { i ->
                     val width by animateDpAsState(
-                        targetValue = if (i == pagerState.currentPage) 28.dp else 8.dp,
+                        targetValue = if (i == currentPage) 28.dp else 8.dp,
                         animationSpec = tween(300),
-                        label = "indicator",
+                        label = "indicator_$i",
                     )
                     Box(
                         modifier = Modifier
@@ -107,14 +130,14 @@ fun OnboardingScreen(
                             .width(width)
                             .clip(CircleShape)
                             .background(
-                                if (i == pagerState.currentPage) Color.White
+                                if (i == currentPage) Color.White
                                 else Color.White.copy(alpha = 0.35f)
                             ),
                     )
                 }
             }
 
-            if (pagerState.currentPage < pages.size - 1) {
+            if (currentPage < pages.size - 1) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -122,9 +145,12 @@ fun OnboardingScreen(
                 ) {
                     TextButton(
                         onClick = {
-                            scope.launch { viewModel.completeOnboarding() }
-                            onFinish()
+                            if (!isNavigating) {
+                                isNavigating = true
+                                viewModel.completeOnboarding { onFinish() }
+                            }
                         },
+                        enabled = !isNavigating,
                     ) {
                         Text(
                             "Skip",
@@ -134,15 +160,18 @@ fun OnboardingScreen(
                     }
                     Button(
                         onClick = {
-                            scope.launch {
-                                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                            if (!pagerState.isScrollInProgress) {
+                                scope.launch {
+                                    pagerState.animateScrollToPage(currentPage + 1)
+                                }
                             }
                         },
                         shape = ShapeButtonRound,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White,
-                            contentColor = pages[pagerState.currentPage].gradientStart,
+                            contentColor = pages[currentPage].gradientStart,
                         ),
+                        enabled = !pagerState.isScrollInProgress,
                         modifier = Modifier.height(48.dp),
                         contentPadding = PaddingValues(horizontal = 28.dp),
                     ) {
@@ -152,23 +181,34 @@ fun OnboardingScreen(
             } else {
                 Button(
                     onClick = {
-                        scope.launch { viewModel.completeOnboarding() }
-                        onFinish()
+                        if (!isNavigating) {
+                            isNavigating = true
+                            viewModel.completeOnboarding { onFinish() }
+                        }
                     },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
                     shape = ShapeButtonRound,
+                    enabled = !isNavigating,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White,
                         contentColor = pages.last().gradientStart,
                     ),
                 ) {
-                    Text(
-                        "Get Started",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    if (isNavigating) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = pages.last().gradientStart,
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Text(
+                            "Get Started",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
                 }
             }
         }
@@ -180,19 +220,17 @@ private fun OnboardingPageContent(page: OnboardingPage) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(listOf(page.gradientStart, page.gradientEnd))
-            ),
+            .background(Brush.verticalGradient(listOf(page.gradientStart, page.gradientEnd))),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.Center)
+                .statusBarsPadding()
                 .padding(horizontal = Spacing.xxxl)
-                .padding(bottom = 200.dp),
+                .padding(bottom = 220.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Icon in a frosted circle
             Box(
                 modifier = Modifier
                     .size(100.dp)
@@ -229,7 +267,6 @@ private fun OnboardingPageContent(page: OnboardingPage) {
 
             Spacer(Modifier.height(Spacing.xxxl))
 
-            // Feature chips
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 page.features.forEach { feature ->
                     Row(

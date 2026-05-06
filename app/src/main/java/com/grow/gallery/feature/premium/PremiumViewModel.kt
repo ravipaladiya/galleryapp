@@ -9,11 +9,14 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class UserMessage(val id: Long, val text: String)
+
 data class PremiumUiState(
     val plans: List<PremiumPlan> = emptyList(),
     val isPremium: Boolean = false,
     val isLoading: Boolean = false,
-    val error: String? = null,
+    val isRestoring: Boolean = false,
+    val userMessages: List<UserMessage> = emptyList(),
 )
 
 @HiltViewModel
@@ -36,10 +39,11 @@ class PremiumViewModel @Inject constructor(
 
     fun subscribe(planId: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true) }
             billingManager.purchasePlan(planId)
                 .onFailure { e ->
-                    _uiState.update { it.copy(isLoading = false, error = e.message) }
+                    emitMessage(e.message ?: "Purchase failed. Please try again.")
+                    _uiState.update { it.copy(isLoading = false) }
                 }
                 .onSuccess {
                     _uiState.update { it.copy(isLoading = false) }
@@ -49,7 +53,28 @@ class PremiumViewModel @Inject constructor(
 
     fun restorePurchase() {
         viewModelScope.launch {
+            _uiState.update { it.copy(isRestoring = true) }
             billingManager.restorePurchases()
+                .onFailure { e ->
+                    emitMessage(e.message ?: "No purchases found to restore.")
+                    _uiState.update { it.copy(isRestoring = false) }
+                }
+                .onSuccess {
+                    emitMessage("Purchases restored successfully.")
+                    _uiState.update { it.copy(isRestoring = false) }
+                }
+        }
+    }
+
+    fun messageShown(id: Long) {
+        _uiState.update { state ->
+            state.copy(userMessages = state.userMessages.filterNot { it.id == id })
+        }
+    }
+
+    private fun emitMessage(text: String) {
+        _uiState.update { state ->
+            state.copy(userMessages = state.userMessages + UserMessage(System.currentTimeMillis(), text))
         }
     }
 }

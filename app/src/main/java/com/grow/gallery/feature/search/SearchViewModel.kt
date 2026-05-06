@@ -50,17 +50,10 @@ class SearchViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true) }
             try {
                 val results = mediaRepository.searchMedia(query)
-                val filtered = when (_uiState.value.filter) {
-                    MediaFilter.PHOTOS -> results.filter { it.isPhoto }
-                    MediaFilter.VIDEOS -> results.filter { it.isVideo }
-                    MediaFilter.FAVORITES -> results.filter { it.isFavorite }
-                    MediaFilter.ALL -> results
-                }
+                val filtered = applyFilter(results, _uiState.value.filter)
                 _uiState.update { it.copy(results = filtered, isLoading = false) }
-                // Save to recents when we get results
-                if (filtered.isNotEmpty()) {
-                    dataStoreManager.addRecentSearch(query.trim())
-                }
+                // Save all queries to recents (including zero-result ones) so users see what they searched
+                dataStoreManager.addRecentSearch(query.trim())
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -70,13 +63,37 @@ class SearchViewModel @Inject constructor(
     }
 
     fun setFilter(filter: MediaFilter) {
+        // Cancel in-flight search and apply filter immediately without re-debouncing
+        searchJob?.cancel()
         _uiState.update { it.copy(filter = filter) }
-        if (_uiState.value.query.isNotBlank()) {
-            onQueryChange(_uiState.value.query)
+        val currentQuery = _uiState.value.query
+        if (currentQuery.isBlank()) return
+        searchJob = viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            try {
+                val results = mediaRepository.searchMedia(currentQuery)
+                val filtered = applyFilter(results, filter)
+                _uiState.update { it.copy(results = filtered, isLoading = false) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false) }
+            }
         }
     }
 
     fun clearRecentSearches() {
         viewModelScope.launch { dataStoreManager.clearRecentSearches() }
+    }
+
+    fun removeRecentSearch(query: String) {
+        viewModelScope.launch { dataStoreManager.removeRecentSearch(query) }
+    }
+
+    private fun applyFilter(items: List<MediaItem>, filter: MediaFilter) = when (filter) {
+        MediaFilter.PHOTOS -> items.filter { it.isPhoto }
+        MediaFilter.VIDEOS -> items.filter { it.isVideo }
+        MediaFilter.FAVORITES -> items.filter { it.isFavorite }
+        MediaFilter.ALL -> items
     }
 }

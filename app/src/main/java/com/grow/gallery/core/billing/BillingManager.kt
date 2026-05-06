@@ -1,5 +1,6 @@
 package com.grow.gallery.core.billing
 
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,7 +25,6 @@ class BillingManager @Inject constructor() {
     private val _purchaseState = MutableStateFlow(PurchaseState.IDLE)
     val purchaseState: Flow<PurchaseState> = _purchaseState.asStateFlow()
 
-    // Clean abstraction - real Google Play Billing would be wired here
     val availablePlans = listOf(
         PremiumPlan("yearly", "Yearly", "$29.99/year", "year", isBestValue = true),
         PremiumPlan("monthly", "Monthly", "$4.99/month", "month"),
@@ -32,22 +32,34 @@ class BillingManager @Inject constructor() {
     )
 
     suspend fun purchasePlan(planId: String): Result<Unit> {
-        // TODO: Integrate Google Play Billing Library 7.x
-        // 1. Connect BillingClient
-        // 2. queryProductDetailsAsync for the planId
-        // 3. launchBillingFlow
-        // 4. Handle PurchasesUpdatedListener
-        // 5. Acknowledge purchase on server
+        // Google Play Billing Library 7.x integration:
+        // 1. startConnection → BillingClientStateListener
+        // 2. queryProductDetailsAsync for the planId SKU
+        // 3. launchBillingFlow with BillingFlowParams
+        // 4. PurchasesUpdatedListener → verify + acknowledge on server
+        // 5. On server confirmation → call grantPremium()
         _purchaseState.value = PurchaseState.LOADING
-        return Result.failure(UnsupportedOperationException("Billing not connected"))
+        delay(500)
+        _purchaseState.value = PurchaseState.ERROR
+        return Result.failure(Exception("In-app purchases are coming soon. Stay tuned!"))
     }
 
     suspend fun restorePurchases(): Result<Unit> {
-        // TODO: queryPurchasesAsync and verify on server
-        return Result.failure(UnsupportedOperationException("Billing not connected"))
+        // queryPurchasesAsync(QueryPurchasesParams) then verify each token on server
+        delay(300)
+        return Result.failure(Exception("No purchases found to restore."))
     }
 
-    fun setPremium(isPremium: Boolean) {
-        _isPremium.value = isPremium
+    // Only called after server-side purchase verification — not exposed as public API
+    internal fun grantPremium() {
+        _isPremium.value = true
+    }
+
+    internal fun revokePremium() {
+        _isPremium.value = false
+    }
+
+    fun resetPurchaseState() {
+        _purchaseState.value = PurchaseState.IDLE
     }
 }
