@@ -10,15 +10,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BackupScreen(onNavigateUp: () -> Unit) {
-    var backupEnabled by remember { mutableStateOf(false) }
-    var wifiOnly by remember { mutableStateOf(true) }
-    var isSyncing by remember { mutableStateOf(false) }
+fun BackupScreen(
+    onNavigateUp: () -> Unit,
+    viewModel: BackupViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = { GalleryTopBar(title = "Backup & Sync", onNavigateUp = onNavigateUp) },
@@ -30,7 +33,6 @@ fun BackupScreen(onNavigateUp: () -> Unit) {
             ),
         ) {
             item {
-                // Status card
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -42,28 +44,29 @@ fun BackupScreen(onNavigateUp: () -> Unit) {
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Icon(
-                            if (backupEnabled) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                            if (uiState.backupEnabled) Icons.Default.CloudDone else Icons.Default.CloudOff,
                             null,
-                            tint = if (backupEnabled) Brand.Blue else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = if (uiState.backupEnabled) Brand.Blue else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(48.dp),
                         )
                         Spacer(Modifier.height(Spacing.md))
                         Text(
-                            if (backupEnabled) "Backup On" else "Backup Off",
+                            if (uiState.backupEnabled) "Backup On" else "Backup Off",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            if (backupEnabled) "Your photos are being backed up" else "Enable backup to protect your photos",
+                            if (uiState.backupEnabled) "Your photos are being backed up"
+                            else "Enable backup to protect your photos",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(Spacing.lg))
                         Button(
-                            onClick = { backupEnabled = !backupEnabled },
+                            onClick = { viewModel.setBackupEnabled(!uiState.backupEnabled) },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(if (backupEnabled) "Disable Backup" else "Enable Backup")
+                            Text(if (uiState.backupEnabled) "Disable Backup" else "Enable Backup")
                         }
                     }
                 }
@@ -76,7 +79,10 @@ fun BackupScreen(onNavigateUp: () -> Unit) {
                     subtitle = "Only backup when connected to Wi-Fi",
                     leading = { Icon(Icons.Default.Wifi, null) },
                     trailing = {
-                        Switch(checked = wifiOnly, onCheckedChange = { wifiOnly = it })
+                        Switch(
+                            checked = uiState.wifiOnly,
+                            onCheckedChange = viewModel::setWifiOnly,
+                        )
                     },
                 )
             }
@@ -86,11 +92,9 @@ fun BackupScreen(onNavigateUp: () -> Unit) {
                     subtitle = "Not signed in",
                     leading = { Icon(Icons.Default.AccountCircle, null) },
                     trailing = { Icon(Icons.Default.ChevronRight, null) },
-                    onClick = { /* Sign in */ },
+                    onClick = { },
                 )
             }
-
-            // TODO: Implement actual backup with WorkManager + cloud provider SDK
         }
     }
 }

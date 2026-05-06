@@ -1,7 +1,7 @@
 package com.grow.gallery.app
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
@@ -48,7 +48,7 @@ import com.grow.gallery.feature.viewer.ViewerScreen
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
@@ -166,6 +166,9 @@ fun GalleryApp(appViewModel: AppViewModel) {
                     onOpenViewer = { mediaId, isVideo ->
                         navController.navigate(Screen.Viewer.createRoute(mediaId, isVideo))
                     },
+                    onOpenSlideshow = { aid ->
+                        navController.navigate(Screen.Slideshow.createRoute(aid))
+                    },
                     onNavigateUp = navController::navigateUp,
                 )
             }
@@ -271,7 +274,11 @@ fun GalleryApp(appViewModel: AppViewModel) {
             }
 
             composable(Screen.Storage.route) {
-                StorageScreen(onNavigateUp = navController::navigateUp)
+                StorageScreen(
+                    onNavigateUp = navController::navigateUp,
+                    onOpenCleaner = { navController.navigate(Screen.Cleaner.route) },
+                    onOpenTrash = { navController.navigate(Screen.Trash.route) },
+                )
             }
 
             composable(
