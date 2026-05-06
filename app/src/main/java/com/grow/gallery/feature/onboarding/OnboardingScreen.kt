@@ -1,17 +1,24 @@
 package com.grow.gallery.feature.onboarding
 
 import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -23,30 +30,38 @@ import com.grow.gallery.core.designsystem.Spacing
 import kotlinx.coroutines.launch
 
 data class OnboardingPage(
-    val emoji: String,
+    val icon: ImageVector,
     val title: String,
     val description: String,
-    val backgroundColor: Color,
+    val features: List<String>,
+    val gradientStart: Color,
+    val gradientEnd: Color,
 )
 
 private val pages = listOf(
     OnboardingPage(
-        emoji = "🖼️",
+        icon = Icons.Default.PhotoLibrary,
         title = "Smart Gallery",
-        description = "AI-powered gallery that understands your photos and memories.",
-        backgroundColor = Color(0xFF0066FF),
+        description = "Your photos, beautifully organized.",
+        features = listOf("Auto date grouping", "Fast photo search", "Videos & photos in one place"),
+        gradientStart = Color(0xFF0052CC),
+        gradientEnd = Color(0xFF0099FF),
     ),
     OnboardingPage(
-        emoji = "📁",
-        title = "Organize Effortlessly",
-        description = "Auto-albums, face groups, and location-based collections.",
-        backgroundColor = Color(0xFF7C3AED),
+        icon = Icons.Default.AutoAwesome,
+        title = "AI-Powered Tools",
+        description = "Edit and enhance with one tap.",
+        features = listOf("AI photo editor", "Crop, adjust & filter", "Batch operations"),
+        gradientStart = Color(0xFF5B21B6),
+        gradientEnd = Color(0xFF8B5CF6),
     ),
     OnboardingPage(
-        emoji = "🔒",
+        icon = Icons.Default.Lock,
         title = "Secure & Private",
-        description = "Lock your private photos in an encrypted vault with PIN or biometric.",
-        backgroundColor = Color(0xFF0F766E),
+        description = "Your memories stay protected.",
+        features = listOf("Encrypted vault", "PIN & biometric lock", "Secure trash bin"),
+        gradientStart = Color(0xFF065F46),
+        gradientEnd = Color(0xFF10B981),
     ),
 )
 
@@ -67,27 +82,33 @@ fun OnboardingScreen(
             OnboardingPageContent(page = pages[page])
         }
 
-        // Controls overlay
+        // Bottom controls
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 48.dp, start = Spacing.xl, end = Spacing.xl),
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.xl, bottom = 52.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Page indicators
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(bottom = Spacing.xxxl),
             ) {
                 pages.indices.forEach { i ->
+                    val width by animateDpAsState(
+                        targetValue = if (i == pagerState.currentPage) 28.dp else 8.dp,
+                        animationSpec = tween(300),
+                        label = "indicator",
+                    )
                     Box(
                         modifier = Modifier
                             .height(4.dp)
-                            .width(if (i == pagerState.currentPage) 24.dp else 8.dp)
+                            .width(width)
                             .clip(CircleShape)
                             .background(
                                 if (i == pagerState.currentPage) Color.White
-                                else Color.White.copy(alpha = 0.4f)
+                                else Color.White.copy(alpha = 0.35f)
                             ),
                     )
                 }
@@ -106,12 +127,11 @@ fun OnboardingScreen(
                         },
                     ) {
                         Text(
-                            text = "Skip",
-                            color = Color.White.copy(alpha = 0.8f),
+                            "Skip",
+                            color = Color.White.copy(alpha = 0.75f),
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }
-
                     Button(
                         onClick = {
                             scope.launch {
@@ -121,14 +141,12 @@ fun OnboardingScreen(
                         shape = ShapeButtonRound,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White,
-                            contentColor = Brand.Blue,
+                            contentColor = pages[pagerState.currentPage].gradientStart,
                         ),
                         modifier = Modifier.height(48.dp),
+                        contentPadding = PaddingValues(horizontal = 28.dp),
                     ) {
-                        Text(
-                            text = "Next",
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                        Text("Next", fontWeight = FontWeight.SemiBold)
                     }
                 }
             } else {
@@ -143,30 +161,15 @@ fun OnboardingScreen(
                     shape = ShapeButtonRound,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White,
-                        contentColor = Brand.Blue,
+                        contentColor = pages.last().gradientStart,
                     ),
                 ) {
                     Text(
-                        text = "Get Started",
+                        "Get Started",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium,
                     )
                 }
-            }
-        }
-
-        // Skip button at top
-        if (pagerState.currentPage < pages.size - 1) {
-            TextButton(
-                onClick = {
-                    scope.launch { viewModel.completeOnboarding() }
-                    onFinish()
-                },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 48.dp, end = Spacing.lg),
-            ) {
-                Text(text = "Skip", color = Color.White.copy(alpha = 0.8f))
             }
         }
     }
@@ -177,21 +180,35 @@ private fun OnboardingPageContent(page: OnboardingPage) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(page.backgroundColor),
-        contentAlignment = Alignment.Center,
+            .background(
+                Brush.verticalGradient(listOf(page.gradientStart, page.gradientEnd))
+            ),
     ) {
         Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp)
-                .padding(bottom = 160.dp),
+                .align(Alignment.Center)
+                .padding(horizontal = Spacing.xxxl)
+                .padding(bottom = 200.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(
-                text = page.emoji,
-                fontSize = 80.sp,
-            )
+            // Icon in a frosted circle
+            Box(
+                modifier = Modifier
+                    .size(100.dp)
+                    .background(Color.White.copy(alpha = 0.2f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = page.icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(52.dp),
+                )
+            }
+
             Spacer(Modifier.height(Spacing.xxxl))
+
             Text(
                 text = page.title,
                 style = MaterialTheme.typography.headlineMedium,
@@ -199,7 +216,9 @@ private fun OnboardingPageContent(page: OnboardingPage) {
                 color = Color.White,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(Spacing.lg))
+
+            Spacer(Modifier.height(Spacing.md))
+
             Text(
                 text = page.description,
                 style = MaterialTheme.typography.bodyLarge,
@@ -207,6 +226,35 @@ private fun OnboardingPageContent(page: OnboardingPage) {
                 textAlign = TextAlign.Center,
                 lineHeight = 26.sp,
             )
+
+            Spacer(Modifier.height(Spacing.xxxl))
+
+            // Feature chips
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                page.features.forEach { feature ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Text(
+                            text = feature,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
         }
     }
 }

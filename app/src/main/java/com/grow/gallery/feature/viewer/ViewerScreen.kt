@@ -52,33 +52,54 @@ fun ViewerScreen(
 
     LaunchedEffect(mediaId) { viewModel.loadMedia(mediaId, isVideo) }
 
+    val pagerState = rememberPagerState(
+        initialPage = uiState.currentIndex,
+        pageCount = { uiState.items.size.coerceAtLeast(1) },
+    )
+
+    // Sync pager page changes back to the ViewModel
+    LaunchedEffect(pagerState.settledPage) {
+        viewModel.setCurrentIndex(pagerState.settledPage)
+    }
+
+    // When the initial index is ready after loading, jump to it without animation
+    LaunchedEffect(uiState.isLoading, uiState.currentIndex) {
+        if (!uiState.isLoading && pagerState.currentPage != uiState.currentIndex) {
+            pagerState.scrollToPage(uiState.currentIndex)
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black),
     ) {
-        // Media viewer
-        uiState.currentItem?.let { item ->
-            ZoomableImage(
-                item = item,
-                onTap = { showControls = !showControls },
-                modifier = Modifier.fillMaxSize(),
+        if (uiState.isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center),
+                color = Color.White,
             )
-
-            // Video play button overlay
-            if (item.isVideo) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clickable { onOpenVideoPlayer() },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayCircle,
-                        contentDescription = "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(72.dp),
-                    )
+        } else {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                beyondViewportPageCount = 1,
+            ) { page ->
+                val item = uiState.items.getOrNull(page)
+                if (item != null) {
+                    if (item.isVideo) {
+                        VideoThumbnailPage(
+                            item = item,
+                            onTap = { showControls = !showControls },
+                            onPlayClick = onOpenVideoPlayer,
+                        )
+                    } else {
+                        ZoomableImage(
+                            item = item,
+                            onTap = { showControls = !showControls },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }
@@ -106,27 +127,36 @@ fun ViewerScreen(
                     IconButton(onClick = onNavigateUp) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
                     }
-                    uiState.currentItem?.let { item ->
-                        Text(
-                            text = item.displayName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = Color.White,
-                            maxLines = 1,
-                            modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm),
-                        )
+                    Column(
+                        modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm),
+                    ) {
+                        uiState.currentItem?.let { item ->
+                            Text(
+                                text = item.displayName,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.White,
+                                maxLines = 1,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            if (uiState.totalCount > 1) {
+                                Text(
+                                    text = "${uiState.currentIndex + 1} / ${uiState.totalCount}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                )
+                            }
+                        }
                     }
                     Row {
                         IconButton(onClick = {
-                            uiState.currentItem?.let {
-                                viewModel.toggleFavorite(it)
-                            }
+                            uiState.currentItem?.let { viewModel.toggleFavorite(it) }
                         }) {
                             Icon(
                                 imageVector = if (uiState.currentItem?.isFavorite == true)
                                     Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = "Favorite",
-                                tint = if (uiState.currentItem?.isFavorite == true) Brand.GoldStart
-                                else Color.White,
+                                tint = if (uiState.currentItem?.isFavorite == true)
+                                    Brand.GoldStart else Color.White,
                             )
                         }
                         IconButton(onClick = { showInfoSheet = true }) {
@@ -162,35 +192,29 @@ fun ViewerScreen(
                             context.shareMedia(item.uri, item.mimeType)
                         }
                     }
-                    ViewerAction(Icons.Default.Edit, "Edit") { onOpenEditor() }
+                    if (uiState.currentItem?.isVideo != true) {
+                        ViewerAction(Icons.Default.Edit, "Edit") { onOpenEditor() }
+                    }
                     ViewerAction(Icons.Default.Delete, "Delete") { showDeleteDialog = true }
                     ViewerAction(Icons.Default.MoreVert, "More") { showSetAsSheet = true }
                     if (uiState.currentItem?.isVideo == true) {
                         ViewerAction(Icons.Default.ContentCut, "Trim") { onOpenTrimmer() }
+                        ViewerAction(Icons.Default.PlayCircle, "Play") { onOpenVideoPlayer() }
                     }
                 }
             }
         }
-
-        // Loading
-        if (uiState.isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = Color.White,
-            )
-        }
     }
 
-    // Dialogs
     if (showDeleteDialog) {
         ConfirmDialog(
-            title = "Delete Photo?",
-            message = "This photo will be moved to Recently Deleted.",
+            title = "Delete?",
+            message = "This will be moved to Recently Deleted.",
             confirmText = "Delete",
             onConfirm = {
                 uiState.currentItem?.let { viewModel.deleteItem(it) }
                 showDeleteDialog = false
-                onNavigateUp()
+                if (uiState.items.size <= 1) onNavigateUp()
             },
             onDismiss = { showDeleteDialog = false },
             isDestructive = true,
@@ -215,6 +239,41 @@ fun ViewerScreen(
 }
 
 @Composable
+private fun VideoThumbnailPage(
+    item: MediaItem,
+    onTap: () -> Unit,
+    onPlayClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable { onTap() },
+        contentAlignment = Alignment.Center,
+    ) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(item.uri)
+                .crossfade(true)
+                .build(),
+            contentDescription = item.displayName,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize(),
+        )
+        IconButton(
+            onClick = onPlayClick,
+            modifier = Modifier.size(80.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayCircle,
+                contentDescription = "Play",
+                tint = Color.White,
+                modifier = Modifier.size(72.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun ZoomableImage(
     item: MediaItem,
     onTap: () -> Unit,
@@ -225,7 +284,11 @@ private fun ZoomableImage(
 
     val transformableState = rememberTransformableState { zoomChange, offsetChange, _ ->
         scale = (scale * zoomChange).coerceIn(1f, 5f)
-        offset += offsetChange
+        if (scale > 1f) offset += offsetChange
+    }
+
+    LaunchedEffect(scale) {
+        if (scale <= 1f) offset = Offset.Zero
     }
 
     Box(
@@ -235,8 +298,12 @@ private fun ZoomableImage(
                 detectTapGestures(
                     onTap = { onTap() },
                     onDoubleTap = {
-                        scale = if (scale > 1f) 1f else 2.5f
-                        offset = Offset.Zero
+                        if (scale > 1f) {
+                            scale = 1f
+                            offset = Offset.Zero
+                        } else {
+                            scale = 2.5f
+                        }
                     },
                 )
             },
@@ -269,7 +336,7 @@ private fun ViewerAction(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(horizontal = Spacing.sm),
+        modifier = Modifier.padding(horizontal = Spacing.xs),
     ) {
         IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
             Icon(icon, label, tint = Color.White, modifier = Modifier.size(24.dp))

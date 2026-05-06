@@ -104,112 +104,112 @@ fun HomeScreen(
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            AnimatedVisibility(visible = !uiState.isSelectionMode) {
-                LargeTopAppBar(
-                    title = {
-                        Text(
-                            "Photos",
-                            fontWeight = FontWeight.Bold,
-                        )
-                    },
-                    actions = {
-                        IconButton(onClick = { showSortFilter = true }) {
-                            Icon(Icons.Default.FilterList, "Sort & Filter")
-                        }
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(Icons.Default.Settings, "Settings")
-                        }
-                    },
-                    scrollBehavior = scrollBehavior,
-                    colors = TopAppBarDefaults.largeTopAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                )
-            }
-            AnimatedVisibility(visible = uiState.isSelectionMode) {
-                SelectionTopBar(
-                    count = uiState.selectedItems.size,
-                    onClose = viewModel::exitSelectionMode,
-                    onSelectAll = viewModel::selectAll,
-                )
-            }
-        },
-        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-    ) { paddingValues ->
-        when {
-            uiState.permissionState == MediaPermissionState.DENIED ||
-                    uiState.permissionState == MediaPermissionState.NOT_ASKED -> {
-                PermissionEmptyState(
-                    title = "Access Your Photos",
-                    description = "Gallery needs permission to show your photos and videos.",
-                    actionText = "Grant Permission",
-                    onAction = { multiplePermissionsState.launchMultiplePermissionRequest() },
-                    modifier = Modifier.padding(paddingValues),
-                )
-            }
-            uiState.isLoading -> {
-                LoadingScreen(modifier = Modifier.padding(paddingValues))
-            }
-            uiState.error != null -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                        .padding(Spacing.xl),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(uiState.error!!, color = MaterialTheme.colorScheme.error)
-                    Spacer(Modifier.height(Spacing.lg))
-                    Button(onClick = viewModel::loadMedia) { Text("Retry") }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                AnimatedVisibility(visible = !uiState.isSelectionMode) {
+                    LargeTopAppBar(
+                        title = {
+                            Text("Photos", fontWeight = FontWeight.Bold)
+                        },
+                        actions = {
+                            IconButton(onClick = { showSortFilter = true }) {
+                                Icon(Icons.Default.FilterList, "Sort & Filter")
+                            }
+                            IconButton(onClick = onOpenSettings) {
+                                Icon(Icons.Default.Settings, "Settings")
+                            }
+                        },
+                        scrollBehavior = scrollBehavior,
+                        colors = TopAppBarDefaults.largeTopAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                    )
+                }
+                AnimatedVisibility(visible = uiState.isSelectionMode) {
+                    SelectionTopBar(
+                        count = uiState.selectedItems.size,
+                        onClose = viewModel::exitSelectionMode,
+                        onSelectAll = viewModel::selectAll,
+                    )
+                }
+            },
+            modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        ) { paddingValues ->
+            when {
+                uiState.permissionState == MediaPermissionState.DENIED ||
+                        uiState.permissionState == MediaPermissionState.NOT_ASKED -> {
+                    PermissionEmptyState(
+                        title = "Access Your Photos",
+                        description = "Gallery needs permission to show your photos and videos.",
+                        actionText = "Grant Permission",
+                        onAction = { multiplePermissionsState.launchMultiplePermissionRequest() },
+                        modifier = Modifier.padding(paddingValues),
+                    )
+                }
+                uiState.isLoading -> {
+                    LoadingScreen(modifier = Modifier.padding(paddingValues))
+                }
+                uiState.error != null -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(paddingValues)
+                            .padding(Spacing.xl),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(uiState.error!!, color = MaterialTheme.colorScheme.error)
+                        Spacer(Modifier.height(Spacing.lg))
+                        Button(onClick = viewModel::loadMedia) { Text("Retry") }
+                    }
+                }
+                uiState.mediaGroups.isEmpty() -> {
+                    EmptyState(
+                        icon = Icons.Default.PhotoLibrary,
+                        title = "No Photos Yet",
+                        description = "Photos and videos from your device will appear here.",
+                        modifier = Modifier.padding(paddingValues),
+                    )
+                }
+                else -> {
+                    MediaTimeline(
+                        groups = uiState.mediaGroups,
+                        selectedItems = uiState.selectedItems,
+                        isSelectionMode = uiState.isSelectionMode,
+                        onItemClick = { item ->
+                            if (uiState.isSelectionMode) {
+                                viewModel.toggleSelection(item.id)
+                            } else {
+                                onOpenViewer(item.id, item.isVideo)
+                            }
+                        },
+                        onItemLongClick = { item ->
+                            viewModel.enterSelectionMode(item.id)
+                        },
+                        contentPadding = paddingValues,
+                        selectionMode = uiState.isSelectionMode,
+                    )
                 }
             }
-            uiState.mediaGroups.isEmpty() -> {
-                EmptyState(
-                    icon = Icons.Default.PhotoLibrary,
-                    title = "No Photos Yet",
-                    description = "Photos and videos from your device will appear here.",
-                    modifier = Modifier.padding(paddingValues),
-                )
-            }
-            else -> {
-                MediaTimeline(
-                    groups = uiState.mediaGroups,
-                    selectedItems = uiState.selectedItems,
-                    isSelectionMode = uiState.isSelectionMode,
-                    onItemClick = { item ->
-                        if (uiState.isSelectionMode) {
-                            viewModel.toggleSelection(item.id)
-                        } else {
-                            onOpenViewer(item.id, item.isVideo)
-                        }
-                    },
-                    onItemLongClick = { item ->
-                        viewModel.enterSelectionMode(item.id)
-                    },
-                    contentPadding = paddingValues,
-                )
-            }
         }
-    }
 
-    // Selection bottom bar
-    AnimatedVisibility(
-        visible = uiState.isSelectionMode,
-        enter = slideInVertically { it },
-        exit = slideOutVertically { it },
-        modifier = Modifier.systemBarsPadding(),
-    ) {
-        SelectionActionBar(
-            count = uiState.selectedItems.size,
-            onShare = viewModel::prepareShare,
-            onDelete = viewModel::requestDeleteSelected,
-            onFavorite = viewModel::favoriteSelected,
-        )
+        // Selection bottom bar anchored to screen bottom
+        AnimatedVisibility(
+            visible = uiState.isSelectionMode,
+            enter = slideInVertically { it },
+            exit = slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            SelectionActionBar(
+                count = uiState.selectedItems.size,
+                onShare = viewModel::prepareShare,
+                onDelete = viewModel::requestDeleteSelected,
+                onFavorite = viewModel::favoriteSelected,
+            )
+        }
     }
 
     // Delete confirmation dialog
@@ -243,12 +243,13 @@ private fun MediaTimeline(
     onItemClick: (com.grow.gallery.core.media.MediaItem) -> Unit,
     onItemLongClick: (com.grow.gallery.core.media.MediaItem) -> Unit,
     contentPadding: PaddingValues,
+    selectionMode: Boolean = false,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding(),
-            bottom = contentPadding.calculateBottomPadding() + 16.dp,
+            bottom = contentPadding.calculateBottomPadding() + if (selectionMode) 80.dp else 16.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -260,6 +261,7 @@ private fun MediaTimeline(
             ) {
                 SectionHeader(
                     title = group.label,
+                    count = group.items.size,
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
@@ -308,18 +310,32 @@ private fun SelectionActionBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        tonalElevation = 3.dp,
+        tonalElevation = 4.dp,
+        shadowElevation = 8.dp,
+        color = MaterialTheme.colorScheme.surface,
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = Spacing.lg, vertical = Spacing.md),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .navigationBarsPadding(),
         ) {
-            SelectionAction(Icons.Default.Share, "Share", onShare)
-            SelectionAction(Icons.Default.Delete, "Delete", onDelete)
-            SelectionAction(Icons.Default.FavoriteBorder, "Favorite", onFavorite)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.md),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SelectionAction(Icons.Default.Share, "Share", onShare)
+                SelectionAction(Icons.Default.FavoriteBorder, "Favorite", onFavorite)
+                SelectionAction(
+                    icon = Icons.Default.Delete,
+                    label = "Delete",
+                    onClick = onDelete,
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }
@@ -329,15 +345,20 @@ private fun SelectionAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     onClick: () -> Unit,
+    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier.padding(horizontal = Spacing.sm),
     ) {
         IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
-            Icon(icon, label, modifier = Modifier.size(24.dp))
+            Icon(icon, label, tint = tint, modifier = Modifier.size(24.dp))
         }
-        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = tint,
+        )
     }
 }
 
