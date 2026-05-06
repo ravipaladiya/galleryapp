@@ -32,6 +32,7 @@ data class EditorTool(
     val isPremium: Boolean = false,
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
     mediaId: Long,

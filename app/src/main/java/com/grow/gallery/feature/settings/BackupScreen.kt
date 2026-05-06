@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BackupScreen(onNavigateUp: () -> Unit) {
     var backupEnabled by remember { mutableStateOf(false) }

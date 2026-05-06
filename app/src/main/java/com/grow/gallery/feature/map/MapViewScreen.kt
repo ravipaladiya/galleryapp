@@ -21,6 +21,7 @@ import com.grow.gallery.core.designsystem.components.*
 // This screen provides the UI shell; actual map rendering requires
 // adding the Maps SDK dependency and API key configuration.
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapViewScreen(
     onNavigateUp: () -> Unit,
