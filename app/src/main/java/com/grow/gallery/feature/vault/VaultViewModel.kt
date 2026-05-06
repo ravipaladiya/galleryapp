@@ -82,7 +82,6 @@ class VaultViewModel @Inject constructor(
 
 
     fun unlockWithBiometric() {
-    fun unlockWithBiometric() {
         viewModelScope.launch {
             val items = vaultDao.getAllVaultItems()
             _uiState.update { it.copy(isUnlocked = true, vaultItems = items, error = null) }

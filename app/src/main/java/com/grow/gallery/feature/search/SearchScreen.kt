@@ -5,15 +5,20 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -34,20 +39,22 @@ fun SearchScreen(
 
     Scaffold(
         topBar = {
-            Column {
-                Spacer(Modifier.windowInsetsTopHeight(WindowInsets.statusBars))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(bottom = Spacing.xs),
+            ) {
                 Text(
                     "Search",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                 )
-                SearchBar(
-                    query = uiState.query,
-                    onQueryChange = viewModel::onQueryChange,
-                    onSearch = { focusManager.clearFocus() },
-                    active = false,
-                    onActiveChange = {},
+
+                OutlinedTextField(
+                    value = uiState.query,
+                    onValueChange = viewModel::onQueryChange,
                     placeholder = { Text("Search photos, albums, dates…") },
                     leadingIcon = { Icon(Icons.Default.Search, "Search") },
                     trailingIcon = {
@@ -57,14 +64,22 @@ fun SearchScreen(
                             }
                         }
                     },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                    shape = RoundedCornerShape(28.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = Spacing.lg)
                         .focusRequester(focusRequester),
-                ) {}
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Brand.Blue,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    ),
+                )
+
                 Spacer(Modifier.height(Spacing.sm))
 
-                // Filter chips
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = Spacing.lg),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -117,26 +132,31 @@ fun SearchScreen(
                 )
             }
             else -> {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    contentPadding = PaddingValues(
-                        top = paddingValues.calculateTopPadding() + 8.dp,
-                        bottom = paddingValues.calculateBottomPadding() + 16.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    items(
-                        items = uiState.results,
-                        key = { it.id },
-                    ) { item ->
-                        MediaGridItem(
-                            item = item,
-                            isSelected = false,
-                            isSelectionMode = false,
-                            onClick = { onOpenViewer(item.id, item.isVideo) },
-                            onLongClick = {},
-                        )
+                Column(modifier = Modifier.padding(paddingValues)) {
+                    Text(
+                        "${uiState.results.size} result${if (uiState.results.size == 1) "" else "s"}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                    )
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        contentPadding = PaddingValues(bottom = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        items(
+                            items = uiState.results,
+                            key = { it.id },
+                        ) { item ->
+                            MediaGridItem(
+                                item = item,
+                                isSelected = false,
+                                isSelectionMode = false,
+                                onClick = { onOpenViewer(item.id, item.isVideo) },
+                                onLongClick = {},
+                            )
+                        }
                     }
                 }
             }
@@ -177,10 +197,21 @@ private fun SearchSuggestions(
                 )
             }
         } else {
+            Spacer(Modifier.height(Spacing.xxl))
+            Icon(
+                Icons.Default.Search,
+                null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.4f),
+                modifier = Modifier
+                    .size(64.dp)
+                    .align(Alignment.CenterHorizontally),
+            )
+            Spacer(Modifier.height(Spacing.lg))
             Text(
                 "Search for photos by name, date, or album.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
             )
         }
     }

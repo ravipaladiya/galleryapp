@@ -264,7 +264,7 @@ private fun MediaTimeline(
         groups.forEach { group ->
             item(
                 key = "header_${group.label}",
-                span = { GridItemSpan(3) },
+                span = { GridItemSpan(maxLineSpan) },
             ) {
                 SectionHeader(
                     title = group.label,

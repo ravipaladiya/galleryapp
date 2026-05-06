@@ -173,40 +173,20 @@ fun VideoTrimmerScreen(
                         .clip(RoundedCornerShape(8.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    // Inactive (before trim start)
-                    if (startFrac > 0f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .fillMaxWidth(startFrac)
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                        )
-                    }
-                    // Active trim region
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(endFrac - startFrac)
-                            .offset(x = (startFrac * 10000).dp.let {
-                                // Use fraction-based approach instead of fixed dp
-                                0.dp
-                            })
-                            .align(Alignment.CenterStart)
-                            .padding(start = 0.dp),
-                    ) {
-                        // We use a proper fraction approach below
-                    }
-                    // Proper active region using BoxWithConstraints would be ideal, but
-                    // using Modifier.fillMaxWidth with offset via fraction:
                     Row(modifier = Modifier.fillMaxSize()) {
-                        if (startFrac > 0f) Spacer(Modifier.fillMaxHeight().weight(startFrac))
+                        if (startFrac > 0f) {
+                            Spacer(
+                                Modifier
+                                    .fillMaxHeight()
+                                    .weight(startFrac)
+                            )
+                        }
                         Box(
                             modifier = Modifier
                                 .fillMaxHeight()
                                 .weight((endFrac - startFrac).coerceAtLeast(0.01f))
                                 .background(Brand.Blue.copy(alpha = 0.35f)),
                         ) {
-                            // Left handle
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.CenterStart)
@@ -214,7 +194,6 @@ fun VideoTrimmerScreen(
                                     .fillMaxHeight()
                                     .background(Brand.Blue),
                             )
-                            // Right handle
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.CenterEnd)
@@ -223,7 +202,13 @@ fun VideoTrimmerScreen(
                                     .background(Brand.Blue),
                             )
                         }
-                        if (endFrac < 1f) Spacer(Modifier.fillMaxHeight().weight((1f - endFrac).coerceAtLeast(0.01f)))
+                        if (endFrac < 1f) {
+                            Spacer(
+                                Modifier
+                                    .fillMaxHeight()
+                                    .weight((1f - endFrac).coerceAtLeast(0.01f))
+                            )
+                        }
                     }
                 }
 

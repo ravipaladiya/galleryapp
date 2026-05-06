@@ -5,7 +5,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -17,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -38,13 +38,17 @@ fun MemoriesScreen(
     viewModel: MemoriesViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
         topBar = {
             LargeTopAppBar(
                 title = { Text("Memories", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = onOpenSlideshow) {
+                    IconButton(
+                        onClick = onOpenSlideshow,
+                        enabled = uiState.memories.isNotEmpty() || uiState.onThisDay.isNotEmpty(),
+                    ) {
                         Icon(Icons.Default.PlayCircle, "Slideshow")
                     }
                 },
@@ -52,15 +56,17 @@ fun MemoriesScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
+                scrollBehavior = scrollBehavior,
             )
         },
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
     ) { paddingValues ->
         when {
             uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
-            uiState.memories.isEmpty() -> EmptyState(
+            uiState.memories.isEmpty() && uiState.onThisDay.isEmpty() -> EmptyState(
                 icon = Icons.Default.AutoAwesome,
                 title = "No Memories Yet",
-                description = "Take more photos to create memories.",
+                description = "Take more photos to create memories. Your best moments will appear here.",
                 modifier = Modifier.padding(paddingValues),
             )
             else -> {
@@ -69,8 +75,8 @@ fun MemoriesScreen(
                         top = paddingValues.calculateTopPadding(),
                         bottom = paddingValues.calculateBottomPadding() + 16.dp,
                     ),
+                    modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                 ) {
-                    // On This Day section
                     if (uiState.onThisDay.isNotEmpty()) {
                         item {
                             OnThisDaySection(
@@ -80,7 +86,6 @@ fun MemoriesScreen(
                         }
                     }
 
-                    // Memory cards
                     items(uiState.memories, key = { it.label }) { memory ->
                         MemoryCard(
                             memory = memory,
@@ -100,7 +105,10 @@ private fun OnThisDaySection(
     onOpenViewer: (Long, Boolean) -> Unit,
 ) {
     Column {
-        SectionHeader("On This Day")
+        SectionHeader(
+            title = "On This Day",
+            count = items.size,
+        )
         LazyRow(
             contentPadding = PaddingValues(horizontal = Spacing.lg),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
@@ -122,6 +130,16 @@ private fun OnThisDaySection(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    if (item.isVideo) {
+                        Icon(
+                            Icons.Default.PlayCircle,
+                            null,
+                            tint = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(28.dp),
+                        )
+                    }
                 }
             }
         }
@@ -156,18 +174,16 @@ private fun MemoryCard(
                 )
             }
 
-            // Gradient overlay
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f)),
                         )
                     ),
             )
 
-            // Content
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -180,13 +196,12 @@ private fun MemoryCard(
                     color = Color.White,
                 )
                 Text(
-                    text = "${memory.items.size} photos",
+                    text = "${memory.items.size} photo${if (memory.items.size == 1) "" else "s"}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Color.White.copy(alpha = 0.8f),
                 )
             }
 
-            // Play button
             IconButton(
                 onClick = onStartSlideshow,
                 modifier = Modifier
