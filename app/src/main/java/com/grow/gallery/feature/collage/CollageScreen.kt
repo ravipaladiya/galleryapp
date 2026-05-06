@@ -143,7 +143,7 @@ fun CollageScreen(
                                 Brand.Blue,
                                 MaterialTheme.shapes.small,
                             )
-                            .clickable { viewModel.toggleSelection(item) },
+                            .clickable { viewModel.toggleSelection(item, selectedLayout.columns * selectedLayout.rows) },
                     ) {
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
@@ -243,11 +243,34 @@ private fun LayoutChip(layout: CollageLayout, isSelected: Boolean, onClick: () -
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            layout.label,
-            style = MaterialTheme.typography.labelSmall,
-            color = if (isSelected) Brand.Blue else MaterialTheme.colorScheme.onSurface,
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(7.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            repeat(layout.columns) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    repeat(layout.rows) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .background(
+                                    color = if (isSelected) Brand.Blue
+                                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                                    shape = RoundedCornerShape(2.dp),
+                                ),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

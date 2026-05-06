@@ -48,6 +48,7 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     var showSortFilter by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
 
     // System delete confirmation dialog launcher (Android R+)
     val deleteLauncher = rememberLauncherForActivityResult(
@@ -129,8 +130,31 @@ fun HomeScreen(
                             IconButton(onClick = { showSortFilter = true }) {
                                 Icon(Icons.Default.FilterList, "Sort & Filter")
                             }
-                            IconButton(onClick = onOpenSettings) {
-                                Icon(Icons.Default.Settings, "Settings")
+                            Box {
+                                IconButton(onClick = { showOverflowMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, "More options")
+                                }
+                                DropdownMenu(
+                                    expanded = showOverflowMenu,
+                                    onDismissRequest = { showOverflowMenu = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Recently Deleted") },
+                                        leadingIcon = { Icon(Icons.Default.Delete, null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            onOpenTrash()
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Settings") },
+                                        leadingIcon = { Icon(Icons.Default.Settings, null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            onOpenSettings()
+                                        },
+                                    )
+                                }
                             }
                         },
                         scrollBehavior = scrollBehavior,

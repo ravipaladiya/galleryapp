@@ -1,6 +1,8 @@
 package com.grow.gallery.feature.vault
 
+import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
@@ -189,7 +191,8 @@ private fun VaultLockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> Uni
                         pin += digit
                         if (pin.length == 4) {
                             viewModel.unlock(pin)
-                            if (!viewModel.uiState.value.isUnlocked) pin = ""
+                            // Always reset the visible PIN; error state is driven by uiState.error
+                            pin = ""
                         }
                     }
                 },
@@ -234,6 +237,22 @@ private fun VaultUnlockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> U
     ) { uris ->
         if (uris.isNotEmpty()) {
             viewModel.addMediaToVault(uris)
+        }
+    }
+
+    // Launch system delete dialog to remove originals from MediaStore after import
+    val deleteOriginalLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        viewModel.onDeleteResult(result.resultCode == Activity.RESULT_OK)
+    }
+
+    LaunchedEffect(uiState.pendingDeleteIntent) {
+        uiState.pendingDeleteIntent?.let { pendingIntent ->
+            viewModel.onDeleteIntentConsumed()
+            deleteOriginalLauncher.launch(
+                IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+            )
         }
     }
 
