@@ -62,4 +62,5 @@ data class MediaQuery(
     val sortOrder: SortOrder = SortOrder.NEWEST,
     val filter: MediaFilter = MediaFilter.ALL,
     val searchQuery: String = "",
+    val hideScreenshots: Boolean = false,
 )

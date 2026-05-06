@@ -1,6 +1,8 @@
 package com.grow.gallery.feature.settings
 
 import android.content.Context
+import android.os.Environment
+import android.os.StatFs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.grow.gallery.core.billing.BillingManager
@@ -9,8 +11,10 @@ import com.grow.gallery.core.common.openMediaManageSettings
 import com.grow.gallery.core.designsystem.AppTheme
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 data class SettingsUiState(
@@ -50,6 +54,24 @@ class SettingsViewModel @Inject constructor(
                 }
             }.collect()
         }
+        viewModelScope.launch { loadStorageUsage() }
+    }
+
+    private suspend fun loadStorageUsage() {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val stat = StatFs(Environment.getExternalStorageDirectory().path)
+                val used = stat.totalBytes - stat.availableBytes
+                _uiState.update { it.copy(usedStorage = used.formatSize()) }
+            }
+        }
+    }
+
+    private fun Long.formatSize(): String = when {
+        this >= 1_000_000_000L -> "%.1f GB".format(this / 1_000_000_000.0)
+        this >= 1_000_000L -> "%.1f MB".format(this / 1_000_000.0)
+        this >= 1_000L -> "%.0f KB".format(this / 1_000.0)
+        else -> "$this B"
     }
 
     fun cycleTheme() {

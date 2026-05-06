@@ -104,6 +104,7 @@ fun SearchScreen(
                 SearchSuggestions(
                     recentSearches = uiState.recentSearches,
                     onQuerySelect = viewModel::onQueryChange,
+                    onClearRecents = viewModel::clearRecentSearches,
                     modifier = Modifier.padding(paddingValues),
                 )
             }
@@ -147,21 +148,37 @@ fun SearchScreen(
 private fun SearchSuggestions(
     recentSearches: List<String>,
     onQuerySelect: (String) -> Unit,
+    onClearRecents: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.padding(Spacing.lg)) {
         if (recentSearches.isNotEmpty()) {
-            SectionHeader("Recent Searches")
+            SectionHeader(
+                title = "Recent Searches",
+                trailing = {
+                    TextButton(onClick = onClearRecents) {
+                        Text("Clear", style = MaterialTheme.typography.labelSmall)
+                    }
+                },
+            )
             recentSearches.forEach { query ->
                 ListItem(
                     headlineContent = { Text(query) },
                     leadingContent = { Icon(Icons.Default.History, null) },
+                    trailingContent = {
+                        Icon(
+                            Icons.Default.NorthWest,
+                            null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    },
                     modifier = Modifier.clickable { onQuerySelect(query) },
                 )
             }
         } else {
             Text(
-                "Search for photos by name, date, location, or album.",
+                "Search for photos by name, date, or album.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

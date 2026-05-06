@@ -166,6 +166,9 @@ fun GalleryApp(appViewModel: AppViewModel) {
                     onOpenViewer = { mediaId, isVideo ->
                         navController.navigate(Screen.Viewer.createRoute(mediaId, isVideo))
                     },
+                    onOpenSlideshow = {
+                        navController.navigate(Screen.Slideshow.createRoute(albumId))
+                    },
                     onNavigateUp = navController::navigateUp,
                 )
             }
@@ -271,7 +274,11 @@ fun GalleryApp(appViewModel: AppViewModel) {
             }
 
             composable(Screen.Storage.route) {
-                StorageScreen(onNavigateUp = navController::navigateUp)
+                StorageScreen(
+                    onNavigateUp = navController::navigateUp,
+                    onOpenCleaner = { navController.navigate(Screen.Cleaner.route) },
+                    onOpenTrash = { navController.navigate(Screen.Trash.route) },
+                )
             }
 
             composable(

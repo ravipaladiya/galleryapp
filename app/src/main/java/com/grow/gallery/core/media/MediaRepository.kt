@@ -368,6 +368,11 @@ class MediaRepository @Inject constructor(
             val col = if (isVideo) MediaStore.Video.Media.DISPLAY_NAME else MediaStore.Images.Media.DISPLAY_NAME
             parts.add("$col LIKE ?")
         }
+        if (query.hideScreenshots && !isVideo) {
+            val nameCol = MediaStore.Images.Media.DISPLAY_NAME
+            val bucketCol = MediaStore.Images.Media.BUCKET_DISPLAY_NAME
+            parts.add("(LOWER($nameCol) NOT LIKE 'screenshot%' AND LOWER($bucketCol) NOT LIKE '%screenshot%')")
+        }
         return parts.takeIf { it.isNotEmpty() }?.joinToString(" AND ")
     }
 

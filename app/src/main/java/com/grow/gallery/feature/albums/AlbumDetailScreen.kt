@@ -1,5 +1,6 @@
 package com.grow.gallery.feature.albums
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material.icons.Icons
@@ -13,6 +14,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
+import com.grow.gallery.core.media.SortOrder
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,6 +22,7 @@ fun AlbumDetailScreen(
     albumId: Long,
     albumName: String,
     onOpenViewer: (Long, Boolean) -> Unit,
+    onOpenSlideshow: () -> Unit,
     onNavigateUp: () -> Unit,
     viewModel: AlbumDetailViewModel = hiltViewModel(),
 ) {
@@ -27,6 +30,14 @@ fun AlbumDetailScreen(
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     LaunchedEffect(albumId) { viewModel.loadAlbumMedia(albumId) }
+
+    if (uiState.showSortSheet) {
+        SortBottomSheet(
+            current = uiState.sortOrder,
+            onSelect = viewModel::setSortOrder,
+            onDismiss = viewModel::dismissSortSheet,
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -38,10 +49,13 @@ fun AlbumDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /* slideshow */ }) {
+                    IconButton(
+                        onClick = onOpenSlideshow,
+                        enabled = uiState.items.isNotEmpty(),
+                    ) {
                         Icon(Icons.Default.PlayCircle, "Slideshow")
                     }
-                    IconButton(onClick = { /* sort */ }) {
+                    IconButton(onClick = viewModel::showSortSheet) {
                         Icon(Icons.Default.FilterList, "Sort")
                     }
                 },
@@ -90,3 +104,38 @@ fun AlbumDetailScreen(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SortBottomSheet(
+    current: SortOrder,
+    onSelect: (SortOrder) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.padding(bottom = Spacing.xl)) {
+            Text(
+                "Sort By",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
+            )
+            sortOptions.forEach { (order, label, icon) ->
+                ListItem(
+                    headlineContent = { Text(label) },
+                    leadingContent = { Icon(icon, null) },
+                    trailingContent = {
+                        if (current == order) Icon(Icons.Default.Check, null, tint = Brand.Blue)
+                    },
+                    modifier = Modifier.clickable { onSelect(order) },
+                )
+            }
+        }
+    }
+}
+
+private val sortOptions = listOf(
+    Triple(SortOrder.NEWEST, "Newest First", Icons.Default.ArrowDownward),
+    Triple(SortOrder.OLDEST, "Oldest First", Icons.Default.ArrowUpward),
+    Triple(SortOrder.SIZE_DESC, "Largest First", Icons.Default.Storage),
+    Triple(SortOrder.SIZE_ASC, "Smallest First", Icons.Default.Storage),
+)

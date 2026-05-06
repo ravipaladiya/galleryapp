@@ -1,8 +1,5 @@
 package com.grow.gallery.feature.storage
 
-import android.os.Environment
-import android.os.StatFs
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,25 +11,32 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StorageScreen(onNavigateUp: () -> Unit) {
-    val stat = remember { StatFs(Environment.getExternalStorageDirectory().path) }
-    val totalBytes = remember { stat.totalBytes }
-    val freeBytes = remember { stat.availableBytes }
-    val usedBytes = remember { totalBytes - freeBytes }
+fun StorageScreen(
+    onNavigateUp: () -> Unit,
+    onOpenCleaner: () -> Unit = {},
+    onOpenTrash: () -> Unit = {},
+    viewModel: StorageViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = { GalleryTopBar(title = "Storage Manager", onNavigateUp = onNavigateUp) },
     ) { paddingValues ->
+        if (uiState.isLoading) {
+            LoadingScreen(Modifier.padding(paddingValues))
+            return@Scaffold
+        }
+
         LazyColumn(
             contentPadding = PaddingValues(
                 top = paddingValues.calculateTopPadding(),
@@ -40,7 +44,6 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
             ),
         ) {
             item {
-                // Storage donut chart card
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -58,17 +61,17 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
                         )
                         Spacer(Modifier.height(Spacing.xl))
                         StorageProgressBar(
-                            usedBytes = usedBytes,
-                            totalBytes = totalBytes,
+                            usedBytes = uiState.usedBytes,
+                            totalBytes = uiState.totalBytes,
                         )
                         Spacer(Modifier.height(Spacing.xl))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                         ) {
-                            StorageStat("Used", usedBytes.formatSize(), Brand.Blue)
-                            StorageStat("Free", freeBytes.formatSize(), Color(0xFF43A047))
-                            StorageStat("Total", totalBytes.formatSize(), MaterialTheme.colorScheme.onSurfaceVariant)
+                            StorageStat("Used", uiState.usedBytes.formatSize(), Brand.Blue)
+                            StorageStat("Free", uiState.freeBytes.formatSize(), Color(0xFF43A047))
+                            StorageStat("Total", uiState.totalBytes.formatSize(), MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -79,7 +82,8 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
                 StorageTypeRow(
                     icon = Icons.Default.Photo,
                     label = "Photos",
-                    size = "Calculating…",
+                    size = uiState.photosBytes.formatSize(),
+                    fraction = if (uiState.totalBytes > 0) uiState.photosBytes.toFloat() / uiState.totalBytes else 0f,
                     color = Brand.Blue,
                 )
             }
@@ -87,15 +91,18 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
                 StorageTypeRow(
                     icon = Icons.Default.VideoFile,
                     label = "Videos",
-                    size = "Calculating…",
+                    size = uiState.videosBytes.formatSize(),
+                    fraction = if (uiState.totalBytes > 0) uiState.videosBytes.toFloat() / uiState.totalBytes else 0f,
                     color = Color(0xFF7C3AED),
                 )
             }
             item {
+                val other = (uiState.usedBytes - uiState.photosBytes - uiState.videosBytes).coerceAtLeast(0L)
                 StorageTypeRow(
                     icon = Icons.Default.FolderOpen,
                     label = "Other Files",
-                    size = "Calculating…",
+                    size = other.formatSize(),
+                    fraction = if (uiState.totalBytes > 0) other.toFloat() / uiState.totalBytes else 0f,
                     color = Color(0xFFD97706),
                 )
             }
@@ -107,16 +114,16 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
                     subtitle = "Find and remove junk files",
                     leading = { Icon(Icons.Default.CleaningServices, null) },
                     trailing = { Icon(Icons.Default.ChevronRight, null) },
-                    onClick = { /* Navigate to cleaner */ },
+                    onClick = onOpenCleaner,
                 )
             }
             item {
                 SettingRow(
-                    title = "Empty Trash",
-                    subtitle = "Permanently delete trashed items",
+                    title = "Recently Deleted",
+                    subtitle = "Manage deleted items",
                     leading = { Icon(Icons.Default.Delete, null) },
                     trailing = { Icon(Icons.Default.ChevronRight, null) },
-                    onClick = { /* Navigate to trash */ },
+                    onClick = onOpenTrash,
                 )
             }
         }
@@ -126,7 +133,11 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
 @Composable
 private fun StorageProgressBar(usedBytes: Long, totalBytes: Long) {
     val fraction = (usedBytes.toFloat() / totalBytes.coerceAtLeast(1)).coerceIn(0f, 1f)
-    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val color = when {
+        fraction > 0.9f -> MaterialTheme.colorScheme.error
+        fraction > 0.7f -> Color(0xFFD97706)
+        else -> Brand.Blue
+    }
 
     Column {
         Box(
@@ -134,14 +145,14 @@ private fun StorageProgressBar(usedBytes: Long, totalBytes: Long) {
                 .fillMaxWidth()
                 .height(20.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(surfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
             Box(
                 modifier = Modifier
                     .fillMaxHeight()
                     .fillMaxWidth(fraction)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Brand.Blue),
+                    .background(color),
             )
         }
         Spacer(Modifier.height(Spacing.sm))
@@ -166,25 +177,46 @@ private fun StorageTypeRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     size: String,
+    fraction: Float,
     color: Color,
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(color.copy(alpha = 0.15f), MaterialTheme.shapes.medium),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.width(Spacing.md))
+            Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            Text(size, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+        }
+        Spacer(Modifier.height(4.dp))
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .background(color.copy(alpha = 0.15f), MaterialTheme.shapes.medium),
-            contentAlignment = Alignment.Center,
+                .fillMaxWidth()
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            Icon(icon, null, tint = color, modifier = Modifier.size(20.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(color),
+            )
         }
-        Spacer(Modifier.width(Spacing.md))
-        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-        Text(size, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
     }
 }
 

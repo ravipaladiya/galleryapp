@@ -1,5 +1,9 @@
 package com.grow.gallery.feature.trash
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -31,8 +35,30 @@ fun TrashScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showEmptyDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        viewModel.onDeleteResult(result.resultCode == Activity.RESULT_OK)
+    }
+
+    LaunchedEffect(uiState.pendingDeleteIntent) {
+        uiState.pendingDeleteIntent?.let { intent ->
+            viewModel.onDeleteIntentConsumed()
+            deleteLauncher.launch(IntentSenderRequest.Builder(intent.intentSender).build())
+        }
+    }
+
+    LaunchedEffect(uiState.snackbarMessage) {
+        uiState.snackbarMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+            viewModel.onSnackbarShown()
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             GalleryTopBar(
                 title = "Recently Deleted",
@@ -75,7 +101,6 @@ fun TrashScreen(
             }
             else -> {
                 Column(modifier = Modifier.padding(paddingValues)) {
-                    // Info banner
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier.fillMaxWidth(),
@@ -122,6 +147,7 @@ fun TrashScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TrashMediaItem(
     item: TrashItem,
@@ -129,6 +155,7 @@ private fun TrashMediaItem(
     onDelete: () -> Unit,
 ) {
     val daysLeft = ((item.expiresAt - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).coerceAtLeast(0)
+    var showMenu by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -145,7 +172,6 @@ private fun TrashMediaItem(
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
-        // Days remaining badge
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
@@ -154,6 +180,26 @@ private fun TrashMediaItem(
                 .padding(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Text("${daysLeft}d", fontSize = 10.sp, style = MaterialTheme.typography.labelSmall)
+        }
+        Box(modifier = Modifier.align(Alignment.TopEnd)) {
+            IconButton(
+                onClick = { showMenu = true },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(Icons.Default.MoreVert, null, tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(16.dp))
+            }
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Restore") },
+                    leadingIcon = { Icon(Icons.Default.Restore, null) },
+                    onClick = { showMenu = false; onRestore() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete Permanently", color = MaterialTheme.colorScheme.error) },
+                    leadingIcon = { Icon(Icons.Default.DeleteForever, null, tint = MaterialTheme.colorScheme.error) },
+                    onClick = { showMenu = false; onDelete() },
+                )
+            }
         }
     }
 }

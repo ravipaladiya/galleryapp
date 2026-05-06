@@ -2,6 +2,7 @@ package com.grow.gallery.feature.slideshow
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.grow.gallery.core.common.DataStoreManager
 import com.grow.gallery.core.media.MediaItem
 import com.grow.gallery.core.media.MediaQuery
 import com.grow.gallery.core.media.MediaRepository
@@ -19,10 +20,19 @@ data class SlideshowUiState(
 @HiltViewModel
 class SlideshowViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
+    private val dataStoreManager: DataStoreManager,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SlideshowUiState())
     val uiState: StateFlow<SlideshowUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            dataStoreManager.slideshowSpeed.collect { seconds ->
+                _uiState.update { it.copy(intervalMs = seconds.coerceAtLeast(1) * 1000L) }
+            }
+        }
+    }
 
     fun loadSlideshow(albumId: Long) {
         viewModelScope.launch {

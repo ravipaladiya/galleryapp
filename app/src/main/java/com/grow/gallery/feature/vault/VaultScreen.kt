@@ -1,5 +1,7 @@
 package com.grow.gallery.feature.vault
 
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import kotlinx.coroutines.launch
@@ -14,10 +16,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.grow.gallery.core.designsystem.*
@@ -126,6 +131,7 @@ private fun VaultSetupScreen(viewModel: VaultViewModel) {
 private fun VaultLockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> Unit) {
     var pin by remember { mutableStateOf("") }
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     Box(
         modifier = Modifier
@@ -186,7 +192,22 @@ private fun VaultLockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> Uni
             )
             if (uiState.biometricEnabled) {
                 Spacer(Modifier.height(Spacing.xl))
-                TextButton(onClick = { /* Launch biometric */ }) {
+                TextButton(onClick = {
+                    val activity = context as? FragmentActivity ?: return@TextButton
+                    val executor = ContextCompat.getMainExecutor(activity)
+                    val callback = object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            viewModel.biometricUnlock()
+                        }
+                    }
+                    BiometricPrompt(activity, executor, callback).authenticate(
+                        BiometricPrompt.PromptInfo.Builder()
+                            .setTitle("Unlock Vault")
+                            .setSubtitle("Use biometric to access your secure vault")
+                            .setNegativeButtonText("Use PIN")
+                            .build()
+                    )
+                }) {
                     Icon(Icons.Default.Fingerprint, null, tint = Color.White)
                     Spacer(Modifier.width(Spacing.sm))
                     Text("Use Biometric", color = Color.White)
