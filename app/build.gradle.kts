@@ -55,9 +55,6 @@ android {
         }
     }
 
-    room {
-        schemaDirectory("$projectDir/schemas")
-    }
 }
 
 dependencies {
@@ -110,4 +107,8 @@ dependencies {
 
     implementation(libs.accompanist.permissions)
     implementation(libs.accompanist.systemuicontroller)
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
