@@ -24,6 +24,7 @@ import com.grow.gallery.core.designsystem.Spacing
 fun SectionHeader(
     title: String,
     modifier: Modifier = Modifier,
+    count: Int? = null,
     trailing: @Composable (() -> Unit)? = null,
 ) {
     Row(
@@ -33,12 +34,24 @@ fun SectionHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (count != null) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
         trailing?.invoke()
     }
 }
@@ -217,6 +230,7 @@ fun EmptyState(
     title: String,
     description: String,
     modifier: Modifier = Modifier,
+    action: Pair<String, () -> Unit>? = null,
 ) {
     Column(
         modifier = modifier
@@ -225,18 +239,26 @@ fun EmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-            modifier = Modifier.size(80.dp),
-        )
-        Spacer(Modifier.height(Spacing.xl))
+        Box(
+            modifier = Modifier
+                .size(88.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = Modifier.size(44.dp),
+            )
+        }
+        Spacer(Modifier.height(Spacing.xxl))
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.height(Spacing.sm))
         Text(
@@ -245,6 +267,12 @@ fun EmptyState(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+        if (action != null) {
+            Spacer(Modifier.height(Spacing.xxxl))
+            Button(onClick = action.second) {
+                Text(action.first)
+            }
+        }
     }
 }
 

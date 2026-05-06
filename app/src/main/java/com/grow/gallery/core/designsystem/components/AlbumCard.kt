@@ -8,6 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -25,41 +27,55 @@ fun AlbumCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
+    Box(
         modifier = modifier
-            .clickable(onClick = onClick),
+            .aspectRatio(1f)
+            .clip(ShapeAlbumCard)
+            .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
     ) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(album.coverUri)
+                .crossfade(true)
+                .size(400)
+                .build(),
+            contentDescription = album.name,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // Gradient overlay for text
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(1f)
-                .clip(ShapeAlbumCard)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .fillMaxHeight(0.45f)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.75f))
+                    )
+                ),
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         ) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(album.coverUri)
-                    .crossfade(true)
-                    .size(400)
-                    .build(),
-                contentDescription = album.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+            Text(
+                text = album.name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = Color.White,
+            )
+            Text(
+                text = "${album.mediaCount}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White.copy(alpha = 0.8f),
             )
         }
-        Spacer(Modifier.height(Spacing.sm))
-        Text(
-            text = album.name,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = "${album.mediaCount} items",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
