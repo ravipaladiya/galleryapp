@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="splash_background">#FFFFFF</color>
+    <color name="primary">#0066FF</color>
+    <color name="primary_dark">#0052CC</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="background">#F8F9FA</color>
+    <color name="on_surface">#0F0F0F</color>
+    <color name="premium_gold_start">#FFD700</color>
+    <color name="premium_gold_end">#FF8C00</color>
+</resources>
