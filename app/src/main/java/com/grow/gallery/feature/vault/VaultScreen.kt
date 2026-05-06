@@ -1,5 +1,8 @@
 package com.grow.gallery.feature.vault
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.*
@@ -19,12 +22,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.grow.gallery.core.database.VaultItem
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 
@@ -221,8 +226,26 @@ private fun VaultLockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> Uni
 @Composable
 private fun VaultUnlockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    var selectedItem by remember { mutableStateOf<VaultItem?>(null) }
+
+    val mediaPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.addMediaToVault(uris)
+        }
+    }
+
+    LaunchedEffect(uiState.snackbarMessage) {
+        uiState.snackbarMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+            viewModel.onSnackbarShown()
+        }
+    }
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             GalleryTopBar(
                 title = "Secure Vault",
@@ -233,8 +256,22 @@ private fun VaultUnlockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> U
                 containerColor = Brand.VaultBlue,
                 contentColor = Color.White,
                 actions = {
-                    IconButton(onClick = { /* Add to vault */ }) {
-                        Icon(Icons.Default.Add, "Add", tint = Color.White)
+                    if (uiState.isImporting) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .padding(end = Spacing.sm),
+                            strokeWidth = 2.dp,
+                            color = Color.White,
+                        )
+                    } else {
+                        IconButton(onClick = {
+                            mediaPicker.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                            )
+                        }) {
+                            Icon(Icons.Default.Add, "Add photos to vault", tint = Color.White)
+                        }
                     }
                 },
             )
@@ -244,8 +281,13 @@ private fun VaultUnlockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> U
             EmptyState(
                 icon = Icons.Default.LockOpen,
                 title = "Vault is Empty",
-                description = "Add private photos and videos to keep them secure.",
+                description = "Tap + to add private photos and videos.\nThey will be encrypted and hidden here.",
                 modifier = Modifier.padding(paddingValues),
+                action = "Add Photos" to {
+                    mediaPicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                    )
+                },
             )
         } else {
             LazyVerticalGrid(
@@ -257,22 +299,89 @@ private fun VaultUnlockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> U
                 verticalArrangement = Arrangement.spacedBy(2.dp),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                items(uiState.vaultItems) { item ->
-                    Box(
-                        modifier = Modifier
-                            .aspectRatio(1f)
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(
-                            item.displayName,
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(4.dp),
-                        )
-                    }
+                items(uiState.vaultItems, key = { it.mediaId }) { item ->
+                    VaultGridItem(
+                        item = item,
+                        onClick = { selectedItem = item },
+                    )
                 }
             }
+        }
+    }
+
+    selectedItem?.let { item ->
+        VaultItemSheet(
+            item = item,
+            onRemove = {
+                viewModel.removeFromVault(item)
+                selectedItem = null
+            },
+            onDismiss = { selectedItem = null },
+        )
+    }
+}
+
+@Composable
+private fun VaultGridItem(item: VaultItem, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .aspectRatio(1f)
+            .background(Brand.VaultBlue.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(Spacing.sm),
+        ) {
+            Icon(
+                if (item.mimeType.startsWith("video/")) Icons.Default.VideoFile else Icons.Default.Image,
+                contentDescription = null,
+                tint = Brand.VaultBlue,
+                modifier = Modifier.size(32.dp),
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                item.displayName,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        // Tap overlay
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color.Transparent,
+            onClick = onClick,
+        ) {}
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VaultItemSheet(
+    item: VaultItem,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                item.displayName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.md),
+            )
+            ListItem(
+                headlineContent = { Text("Remove from Vault", color = MaterialTheme.colorScheme.error) },
+                leadingContent = {
+                    Icon(Icons.Default.LockOpen, null, tint = MaterialTheme.colorScheme.error)
+                },
+                modifier = androidx.compose.foundation.clickable { onRemove() },
+            )
         }
     }
 }

@@ -47,6 +47,33 @@ import com.grow.gallery.feature.video.VideoTrimmerScreen
 import com.grow.gallery.feature.viewer.ViewerScreen
 import dagger.hilt.android.AndroidEntryPoint
 
+val bottomNavItems = listOf(
+    BottomNavItem(
+        route = Screen.Home.route,
+        label = "Photos",
+        icon = Icons.Outlined.PhotoLibrary,
+        selectedIcon = Icons.Filled.PhotoLibrary,
+    ),
+    BottomNavItem(
+        route = Screen.Albums.route,
+        label = "Albums",
+        icon = Icons.Outlined.GridView,
+        selectedIcon = Icons.Filled.GridView,
+    ),
+    BottomNavItem(
+        route = Screen.Search.route,
+        label = "Search",
+        icon = Icons.Outlined.Search,
+        selectedIcon = Icons.Filled.Search,
+    ),
+    BottomNavItem(
+        route = Screen.Memories.route,
+        label = "Memories",
+        icon = Icons.Outlined.AutoAwesome,
+        selectedIcon = Icons.Filled.AutoAwesome,
+    ),
+)
+
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
@@ -166,11 +193,8 @@ fun GalleryApp(appViewModel: AppViewModel) {
                     onOpenViewer = { mediaId, isVideo ->
                         navController.navigate(Screen.Viewer.createRoute(mediaId, isVideo))
                     },
-
-
                     onOpenSlideshow = { aid ->
                         navController.navigate(Screen.Slideshow.createRoute(aid))
-
                     },
                     onNavigateUp = navController::navigateUp,
                 )
@@ -190,3 +214,145 @@ fun GalleryApp(appViewModel: AppViewModel) {
                     onOpenViewer = { mediaId, isVideo ->
                         navController.navigate(Screen.Viewer.createRoute(mediaId, isVideo))
                     },
+                    onOpenSlideshow = {
+                        navController.navigate(Screen.Slideshow.createRoute())
+                    },
+                )
+            }
+
+            composable(
+                route = Screen.Viewer.route,
+                arguments = listOf(
+                    navArgument("mediaId") { type = NavType.LongType },
+                    navArgument("isVideo") { type = NavType.BoolType },
+                ),
+            ) { backStack ->
+                val mediaId = backStack.arguments?.getLong("mediaId") ?: 0L
+                val isVideo = backStack.arguments?.getBoolean("isVideo") ?: false
+                ViewerScreen(
+                    mediaId = mediaId,
+                    isVideo = isVideo,
+                    onNavigateUp = navController::navigateUp,
+                    onOpenEditor = { navController.navigate(Screen.Editor.createRoute(mediaId)) },
+                    onOpenVideoPlayer = { navController.navigate(Screen.VideoPlayer.createRoute(mediaId)) },
+                    onOpenTrimmer = { navController.navigate(Screen.VideoTrimmer.createRoute(mediaId)) },
+                )
+            }
+
+            composable(
+                route = Screen.VideoPlayer.route,
+                arguments = listOf(navArgument("mediaId") { type = NavType.LongType }),
+            ) { backStack ->
+                val mediaId = backStack.arguments?.getLong("mediaId") ?: 0L
+                VideoPlayerScreen(
+                    mediaId = mediaId,
+                    onNavigateUp = navController::navigateUp,
+                    onOpenTrimmer = { navController.navigate(Screen.VideoTrimmer.createRoute(mediaId)) },
+                )
+            }
+
+            composable(
+                route = Screen.VideoTrimmer.route,
+                arguments = listOf(navArgument("mediaId") { type = NavType.LongType }),
+            ) { backStack ->
+                val mediaId = backStack.arguments?.getLong("mediaId") ?: 0L
+                VideoTrimmerScreen(
+                    mediaId = mediaId,
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+
+            composable(
+                route = Screen.Editor.route,
+                arguments = listOf(navArgument("mediaId") { type = NavType.LongType }),
+            ) { backStack ->
+                val mediaId = backStack.arguments?.getLong("mediaId") ?: 0L
+                EditorScreen(
+                    mediaId = mediaId,
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+
+            composable(Screen.Vault.route) {
+                VaultScreen(
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+
+            composable(Screen.Cleaner.route) {
+                CleanerScreen(
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+
+            composable(Screen.Premium.route) {
+                PremiumScreen(
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+
+            composable(Screen.Settings.route) {
+                SettingsScreen(
+                    onNavigateUp = navController::navigateUp,
+                    onOpenVault = { navController.navigate(Screen.Vault.route) },
+                    onOpenPremium = { navController.navigate(Screen.Premium.route) },
+                    onOpenStorage = { navController.navigate(Screen.Storage.route) },
+                    onOpenBackup = { navController.navigate(Screen.Backup.route) },
+                    onOpenAppLock = { navController.navigate(Screen.AppLock.route) },
+                )
+            }
+
+            composable(Screen.Trash.route) {
+                TrashScreen(
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+
+            composable(Screen.Storage.route) {
+                StorageScreen(
+                    onNavigateUp = navController::navigateUp,
+                    onOpenCleaner = { navController.navigate(Screen.Cleaner.route) },
+                    onOpenTrash = { navController.navigate(Screen.Trash.route) },
+                )
+            }
+
+            composable(Screen.Collage.route) {
+                CollageScreen(
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+
+            composable(
+                route = Screen.Slideshow.route,
+                arguments = listOf(navArgument("albumId") { type = NavType.LongType }),
+            ) { backStack ->
+                val albumId = backStack.arguments?.getLong("albumId") ?: -1L
+                SlideshowScreen(
+                    albumId = albumId,
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+
+            composable(Screen.MapView.route) {
+                MapViewScreen(
+                    onNavigateUp = navController::navigateUp,
+                    onOpenViewer = { mediaId, isVideo ->
+                        navController.navigate(Screen.Viewer.createRoute(mediaId, isVideo))
+                    },
+                )
+            }
+
+            composable(Screen.Backup.route) {
+                BackupScreen(
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+
+            composable(Screen.AppLock.route) {
+                AppLockScreen(
+                    onNavigateUp = navController::navigateUp,
+                )
+            }
+        }
+    }
+}

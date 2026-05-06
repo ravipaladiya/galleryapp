@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -23,6 +24,7 @@ fun AlbumsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showCreateDialog by remember { mutableStateOf(false) }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
         topBar = {
@@ -37,16 +39,19 @@ fun AlbumsScreen(
                     containerColor = MaterialTheme.colorScheme.surface,
                     scrolledContainerColor = MaterialTheme.colorScheme.surface,
                 ),
+                scrollBehavior = scrollBehavior,
             )
         },
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
     ) { paddingValues ->
         when {
             uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
             uiState.albums.isEmpty() -> EmptyState(
                 icon = Icons.Default.GridView,
                 title = "No Albums",
-                description = "Create an album to organize your photos.",
+                description = "Photos and videos from your device will appear as albums here.",
                 modifier = Modifier.padding(paddingValues),
+                action = "Create Album" to { showCreateDialog = true },
             )
             else -> {
                 LazyVerticalGrid(
@@ -59,29 +64,28 @@ fun AlbumsScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(Spacing.lg),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.lg),
+                    modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                 ) {
-                    // Recents / All photos first
-                    item(span = { GridItemSpan(2) }) {
-                        SectionHeader(title = "Media")
-                    }
-                    items(
-                        items = uiState.albums.filter { it.isSystemAlbum },
-                        key = { it.id },
-                    ) { album ->
-                        AlbumCard(
-                            album = album,
-                            onClick = { onOpenAlbum(album.id, album.name) },
-                        )
+                    val systemAlbums = uiState.albums.filter { it.isSystemAlbum }
+                    val customAlbums = uiState.albums.filter { !it.isSystemAlbum }
+
+                    if (systemAlbums.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            SectionHeader(title = "Media", count = systemAlbums.size)
+                        }
+                        items(items = systemAlbums, key = { it.id }) { album ->
+                            AlbumCard(
+                                album = album,
+                                onClick = { onOpenAlbum(album.id, album.name) },
+                            )
+                        }
                     }
 
-                    if (uiState.albums.any { !it.isSystemAlbum }) {
-                        item(span = { GridItemSpan(2) }) {
-                            SectionHeader(title = "My Albums")
+                    if (customAlbums.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            SectionHeader(title = "My Albums", count = customAlbums.size)
                         }
-                        items(
-                            items = uiState.albums.filter { !it.isSystemAlbum },
-                            key = { "custom_${it.id}" },
-                        ) { album ->
+                        items(items = customAlbums, key = { "custom_${it.id}" }) { album ->
                             AlbumCard(
                                 album = album,
                                 onClick = { onOpenAlbum(album.id, album.name) },

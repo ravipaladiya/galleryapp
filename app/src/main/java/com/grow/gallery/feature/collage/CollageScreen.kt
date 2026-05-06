@@ -26,6 +26,7 @@ import coil.request.ImageRequest
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 import com.grow.gallery.core.media.MediaItem
+import kotlinx.coroutines.launch
 
 data class CollageLayout(val id: String, val label: String, val columns: Int, val rows: Int)
 
@@ -37,17 +38,41 @@ fun CollageScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedLayout by remember { mutableStateOf(collageLayouts.first()) }
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     val layouts = collageLayouts
 
+    LaunchedEffect(uiState.saveMessage) {
+        uiState.saveMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+            viewModel.onSaveMessageShown()
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             GalleryTopBar(
                 title = "Collage Maker",
                 onNavigateUp = onNavigateUp,
                 actions = {
-                    TextButton(onClick = { /* TODO: Export collage as bitmap */ }) {
-                        Text("Save", color = Brand.Blue, fontWeight = FontWeight.SemiBold)
+                    if (uiState.isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .padding(end = Spacing.sm),
+                            strokeWidth = 2.dp,
+                            color = Brand.Blue,
+                        )
+                    } else {
+                        TextButton(
+                            onClick = { scope.launch { viewModel.saveCollage(context, selectedLayout) } },
+                            enabled = uiState.selectedItems.isNotEmpty(),
+                        ) {
+                            Text("Save", color = Brand.Blue, fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 },
             )
