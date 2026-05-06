@@ -13,6 +13,7 @@ import javax.inject.Inject
 
 data class SearchUiState(
     val query: String = "",
+    val allResults: List<MediaItem> = emptyList(),
     val results: List<MediaItem> = emptyList(),
     val filter: MediaFilter = MediaFilter.ALL,
     val isLoading: Boolean = false,
@@ -39,28 +40,22 @@ class SearchViewModel @Inject constructor(
     }
 
     fun onQueryChange(query: String) {
-        _uiState.update { it.copy(query = query) }
         searchJob?.cancel()
         if (query.isBlank()) {
-            _uiState.update { it.copy(results = emptyList(), isLoading = false) }
+            _uiState.update { it.copy(query = query, allResults = emptyList(), results = emptyList(), isLoading = false) }
             return
         }
+        // Set isLoading immediately so the UI shows a spinner instead of the empty-state during debounce
+        _uiState.update { it.copy(query = query, isLoading = true) }
         searchJob = viewModelScope.launch {
             delay(300)
-            _uiState.update { it.copy(isLoading = true) }
             try {
                 val results = mediaRepository.searchMedia(query)
-                val filtered = when (_uiState.value.filter) {
-                    MediaFilter.PHOTOS -> results.filter { it.isPhoto }
-                    MediaFilter.VIDEOS -> results.filter { it.isVideo }
-                    MediaFilter.FAVORITES -> results.filter { it.isFavorite }
-                    MediaFilter.ALL -> results
-                }
-                _uiState.update { it.copy(results = filtered, isLoading = false) }
-                // Save to recents when we get results
-                if (filtered.isNotEmpty()) {
-                    dataStoreManager.addRecentSearch(query.trim())
-                }
+                val filtered = applyFilter(results, _uiState.value.filter)
+                _uiState.update { it.copy(allResults = results, results = filtered, isLoading = false) }
+                // Save every query the user typed, regardless of result count — failed searches
+                // are the ones they'll want to retry next time.
+                dataStoreManager.addRecentSearch(query.trim())
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -70,13 +65,24 @@ class SearchViewModel @Inject constructor(
     }
 
     fun setFilter(filter: MediaFilter) {
-        _uiState.update { it.copy(filter = filter) }
-        if (_uiState.value.query.isNotBlank()) {
-            onQueryChange(_uiState.value.query)
-        }
+        // Cancel any in-flight search so it cannot overwrite results with the stale filter it captured
+        searchJob?.cancel()
+        val cached = _uiState.value.allResults
+        _uiState.update { it.copy(filter = filter, results = applyFilter(cached, filter)) }
+    }
+
+    fun removeRecentSearch(query: String) {
+        viewModelScope.launch { dataStoreManager.removeRecentSearch(query) }
     }
 
     fun clearRecentSearches() {
         viewModelScope.launch { dataStoreManager.clearRecentSearches() }
+    }
+
+    private fun applyFilter(items: List<MediaItem>, filter: MediaFilter) = when (filter) {
+        MediaFilter.PHOTOS -> items.filter { it.isPhoto }
+        MediaFilter.VIDEOS -> items.filter { it.isVideo }
+        MediaFilter.FAVORITES -> items.filter { it.isFavorite }
+        MediaFilter.ALL -> items
     }
 }

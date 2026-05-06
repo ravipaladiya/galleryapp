@@ -34,7 +34,8 @@ class DataStoreManager @Inject constructor(
         private val KEY_APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled_settings")
         private val KEY_APP_LOCK_BIOMETRIC = booleanPreferencesKey("app_lock_biometric")
         private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
-        private const val RECENT_SEARCHES_DELIMITER = "||"
+        // ASCII Unit Separator (U+001F) — cannot be typed by users, no collision risk
+        private const val RECENT_SEARCHES_DELIMITER = ""
         private const val MAX_RECENT_SEARCHES = 10
     }
 
@@ -58,10 +59,10 @@ class DataStoreManager @Inject constructor(
     val appLockEnabled: Flow<Boolean> = dataStore.data.map { it[KEY_APP_LOCK_ENABLED] ?: false }
     val appLockBiometric: Flow<Boolean> = dataStore.data.map { it[KEY_APP_LOCK_BIOMETRIC] ?: false }
     val recentSearches: Flow<List<String>> = dataStore.data.map { prefs ->
-        prefs[KEY_RECENT_SEARCHES]
-            ?.split(RECENT_SEARCHES_DELIMITER)
-            ?.filter { it.isNotBlank() }
-            ?: emptyList()
+        val raw = prefs[KEY_RECENT_SEARCHES] ?: return@map emptyList()
+        // Support both old "||" delimiter (migration) and new "" delimiter
+        val delimiter = if (raw.contains(RECENT_SEARCHES_DELIMITER)) RECENT_SEARCHES_DELIMITER else "||"
+        raw.split(delimiter).filter { it.isNotBlank() }
     }
 
     suspend fun setTheme(theme: AppTheme) {
@@ -107,12 +108,23 @@ class DataStoreManager @Inject constructor(
     suspend fun addRecentSearch(query: String) {
         if (query.isBlank()) return
         dataStore.edit { prefs ->
-            val current = prefs[KEY_RECENT_SEARCHES]
-                ?.split(RECENT_SEARCHES_DELIMITER)
-                ?.filter { it.isNotBlank() && it != query }
-                ?: emptyList()
+            val raw = prefs[KEY_RECENT_SEARCHES]
+            val current = if (raw != null) {
+                val delimiter = if (raw.contains(RECENT_SEARCHES_DELIMITER)) RECENT_SEARCHES_DELIMITER else "||"
+                raw.split(delimiter).filter { it.isNotBlank() && !it.equals(query, ignoreCase = true) }
+            } else emptyList()
             val updated = listOf(query) + current
             prefs[KEY_RECENT_SEARCHES] = updated.take(MAX_RECENT_SEARCHES).joinToString(RECENT_SEARCHES_DELIMITER)
+        }
+    }
+
+    suspend fun removeRecentSearch(query: String) {
+        dataStore.edit { prefs ->
+            val raw = prefs[KEY_RECENT_SEARCHES] ?: return@edit
+            val delimiter = if (raw.contains(RECENT_SEARCHES_DELIMITER)) RECENT_SEARCHES_DELIMITER else "||"
+            val updated = raw.split(delimiter).filter { it.isNotBlank() && !it.equals(query, ignoreCase = true) }
+            if (updated.isEmpty()) prefs.remove(KEY_RECENT_SEARCHES)
+            else prefs[KEY_RECENT_SEARCHES] = updated.joinToString(RECENT_SEARCHES_DELIMITER)
         }
     }
 

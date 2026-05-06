@@ -2,6 +2,7 @@ package com.grow.gallery.feature.search
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.lazy.items
@@ -37,6 +38,11 @@ fun SearchScreen(
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
+    // Auto-focus the search field when the screen appears
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
     Scaffold(
         topBar = {
             Column(
@@ -59,7 +65,11 @@ fun SearchScreen(
                     leadingIcon = { Icon(Icons.Default.Search, "Search") },
                     trailingIcon = {
                         if (uiState.query.isNotBlank()) {
-                            IconButton(onClick = { viewModel.onQueryChange("") }) {
+                            IconButton(onClick = {
+                                viewModel.onQueryChange("")
+                                // Restore focus so the keyboard stays open for the next query
+                                focusRequester.requestFocus()
+                            }) {
                                 Icon(Icons.Default.Clear, "Clear")
                             }
                         }
@@ -120,6 +130,7 @@ fun SearchScreen(
                     recentSearches = uiState.recentSearches,
                     onQuerySelect = viewModel::onQueryChange,
                     onClearRecents = viewModel::clearRecentSearches,
+                    onRemoveRecent = viewModel::removeRecentSearch,
                     modifier = Modifier.padding(paddingValues),
                 )
             }
@@ -133,15 +144,20 @@ fun SearchScreen(
             }
             else -> {
                 Column(modifier = Modifier.padding(paddingValues)) {
+                    val size = uiState.results.size
                     Text(
-                        "${uiState.results.size} result${if (uiState.results.size == 1) "" else "s"}",
+                        "$size result${if (size == 1) "" else "s"}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                     )
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
-                        contentPadding = PaddingValues(bottom = 16.dp),
+                        contentPadding = PaddingValues(
+                            start = Spacing.xs,
+                            end = Spacing.xs,
+                            bottom = 16.dp,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
@@ -169,29 +185,34 @@ private fun SearchSuggestions(
     recentSearches: List<String>,
     onQuerySelect: (String) -> Unit,
     onClearRecents: () -> Unit,
+    onRemoveRecent: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (recentSearches.isNotEmpty()) {
-        Column(modifier = modifier) {
-            SectionHeader(
-                title = "Recent Searches",
-                trailing = {
-                    TextButton(onClick = onClearRecents) {
-                        Text("Clear", style = MaterialTheme.typography.labelSmall)
-                    }
-                },
-            )
-            recentSearches.forEach { query ->
+        LazyColumn(modifier = modifier) {
+            item {
+                SectionHeader(
+                    title = "Recent Searches",
+                    trailing = {
+                        TextButton(onClick = onClearRecents) {
+                            Text("Clear", style = MaterialTheme.typography.labelSmall)
+                        }
+                    },
+                )
+            }
+            items(recentSearches, key = { it }) { query ->
                 ListItem(
                     headlineContent = { Text(query) },
                     leadingContent = { Icon(Icons.Default.History, null) },
                     trailingContent = {
-                        Icon(
-                            Icons.Default.NorthWest,
-                            null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp),
-                        )
+                        IconButton(onClick = { onRemoveRecent(query) }) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Remove $query from recent searches",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
                     },
                     modifier = Modifier.clickable { onQuerySelect(query) },
                 )

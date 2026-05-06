@@ -214,8 +214,8 @@ fun GalleryApp(appViewModel: AppViewModel) {
                     onOpenViewer = { mediaId, isVideo ->
                         navController.navigate(Screen.Viewer.createRoute(mediaId, isVideo))
                     },
-                    onOpenSlideshow = {
-                        navController.navigate(Screen.Slideshow.createRoute())
+                    onOpenSlideshow = { mediaIds ->
+                        navController.navigate(Screen.Slideshow.createRoute(mediaIds = mediaIds))
                     },
                 )
             }
@@ -324,11 +324,18 @@ fun GalleryApp(appViewModel: AppViewModel) {
 
             composable(
                 route = Screen.Slideshow.route,
-                arguments = listOf(navArgument("albumId") { type = NavType.LongType }),
+                arguments = listOf(
+                    navArgument("albumId") { type = NavType.LongType },
+                    navArgument("mediaIds") { type = NavType.StringType; defaultValue = "" },
+                ),
             ) { backStack ->
                 val albumId = backStack.arguments?.getLong("albumId") ?: -1L
+                val rawIds = backStack.arguments?.getString("mediaIds") ?: ""
+                val mediaIds = if (rawIds.isBlank()) emptyList()
+                else rawIds.split(",").mapNotNull { it.toLongOrNull() }
                 SlideshowScreen(
                     albumId = albumId,
+                    mediaIds = mediaIds,
                     onNavigateUp = navController::navigateUp,
                 )
             }

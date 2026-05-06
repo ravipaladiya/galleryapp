@@ -34,12 +34,24 @@ class SlideshowViewModel @Inject constructor(
         }
     }
 
-    fun loadSlideshow(albumId: Long) {
+    fun loadSlideshow(albumId: Long, mediaIds: List<Long> = emptyList()) {
         viewModelScope.launch {
-            val query = if (albumId > 0) MediaQuery(albumId = albumId) else MediaQuery()
-            val groups = mediaRepository.loadMedia(query)
-            val items = groups.flatMap { it.items }.filter { it.isPhoto }
-            _uiState.update { it.copy(items = items.shuffled(), isLoading = false) }
+            _uiState.update { it.copy(isLoading = true) }
+            val items: List<MediaItem> = if (mediaIds.isNotEmpty()) {
+                // Memory-group slideshow: load the exact set of items by id
+                val query = MediaQuery()
+                val all = mediaRepository.loadMedia(query).flatMap { it.items }
+                val idSet = mediaIds.toHashSet()
+                // Preserve the original memory ordering
+                val idOrder = mediaIds.withIndex().associate { (idx, id) -> id to idx }
+                all.filter { it.id in idSet }
+                    .filter { it.isPhoto }
+                    .sortedBy { idOrder[it.id] ?: Int.MAX_VALUE }
+            } else {
+                val query = if (albumId > 0) MediaQuery(albumId = albumId) else MediaQuery()
+                mediaRepository.loadMedia(query).flatMap { it.items }.filter { it.isPhoto }.shuffled()
+            }
+            _uiState.update { it.copy(items = items, isLoading = false) }
         }
     }
 }

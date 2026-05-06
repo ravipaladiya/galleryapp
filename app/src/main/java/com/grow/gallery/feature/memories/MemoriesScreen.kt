@@ -11,6 +11,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +28,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import coil.size.Size
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 import com.grow.gallery.core.media.MediaItem
@@ -34,11 +37,21 @@ import com.grow.gallery.core.media.MediaItem
 @Composable
 fun MemoriesScreen(
     onOpenViewer: (Long, Boolean) -> Unit,
-    onOpenSlideshow: () -> Unit,
+    onOpenSlideshow: (mediaIds: List<Long>) -> Unit,
     viewModel: MemoriesViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val pullRefreshState = rememberPullToRefreshState()
+
+    // Trigger refresh and end the pull-to-refresh animation once loading completes
+    LaunchedEffect(pullRefreshState.isRefreshing) {
+        if (pullRefreshState.isRefreshing) {
+            viewModel.refresh()
+            snapshotFlow { uiState.isLoading }.filter { !it }.first()
+            pullRefreshState.endRefresh()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -46,8 +59,9 @@ fun MemoriesScreen(
                 title = { Text("Memories", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(
-                        onClick = onOpenSlideshow,
-                        enabled = uiState.memories.isNotEmpty() || uiState.onThisDay.isNotEmpty(),
+                        onClick = { onOpenSlideshow(emptyList()) },
+                        // Enable whenever the screen is visible — slideshow works on all media even without curated memories
+                        enabled = true,
                     ) {
                         Icon(Icons.Default.PlayCircle, "Slideshow")
                     }
@@ -61,40 +75,57 @@ fun MemoriesScreen(
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
     ) { paddingValues ->
-        when {
-            uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
-            uiState.memories.isEmpty() && uiState.onThisDay.isEmpty() -> EmptyState(
-                icon = Icons.Default.AutoAwesome,
-                title = "No Memories Yet",
-                description = "Take more photos to create memories. Your best moments will appear here.",
-                modifier = Modifier.padding(paddingValues),
-            )
-            else -> {
-                LazyColumn(
-                    contentPadding = PaddingValues(
-                        top = paddingValues.calculateTopPadding(),
-                        bottom = paddingValues.calculateBottomPadding() + 16.dp,
-                    ),
-                    modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
-                ) {
-                    if (uiState.onThisDay.isNotEmpty()) {
-                        item {
-                            OnThisDaySection(
-                                items = uiState.onThisDay,
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .nestedScroll(pullRefreshState.nestedScrollConnection),
+        ) {
+            when {
+                uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
+                uiState.memories.isEmpty() && uiState.onThisDay.isEmpty() -> EmptyState(
+                    icon = Icons.Default.AutoAwesome,
+                    title = "No Memories Yet",
+                    description = "Take more photos to create memories. Your best moments will appear here.",
+                    modifier = Modifier.padding(paddingValues),
+                )
+                else -> {
+                    LazyColumn(
+                        contentPadding = PaddingValues(
+                            top = paddingValues.calculateTopPadding(),
+                            bottom = paddingValues.calculateBottomPadding() + 16.dp,
+                        ),
+                        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                    ) {
+                        if (uiState.onThisDay.isNotEmpty()) {
+                            item {
+                                OnThisDaySection(
+                                    items = uiState.onThisDay,
+                                    onOpenViewer = onOpenViewer,
+                                )
+                            }
+                        }
+
+                        items(
+                            uiState.memories,
+                            // Stable key: label + year + item count — prevents duplicate-key crash
+                            key = { "${it.label}-${it.year}-${it.items.size}" },
+                        ) { memory ->
+                            MemoryCard(
+                                memory = memory,
                                 onOpenViewer = onOpenViewer,
+                                onStartSlideshow = { onOpenSlideshow(memory.items.map { it.id }) },
                             )
                         }
                     }
-
-                    items(uiState.memories, key = { it.label }) { memory ->
-                        MemoryCard(
-                            memory = memory,
-                            onOpenViewer = onOpenViewer,
-                            onStartSlideshow = onOpenSlideshow,
-                        )
-                    }
                 }
             }
+
+            PullToRefreshContainer(
+                state = pullRefreshState,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = paddingValues.calculateTopPadding()),
+            )
         }
     }
 }
@@ -124,7 +155,8 @@ private fun OnThisDaySection(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(item.uri)
                             .crossfade(true)
-                            .size(240)
+                            // 480px: correct for xxxhdpi (4×) 120dp containers, sharp on foldables
+                            .size(480)
                             .build(),
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
@@ -167,6 +199,8 @@ private fun MemoryCard(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(item.uri)
                         .crossfade(true)
+                        // Bounded decode size to avoid thrashing the bitmap pool on long lists
+                        .size(Size(800, 480))
                         .build(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,

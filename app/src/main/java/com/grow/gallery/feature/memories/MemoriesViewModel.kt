@@ -16,12 +16,14 @@ data class MemoryGroup(
     val label: String,
     val items: List<MediaItem>,
     val year: Int = 0,
+    val monthIndex: Int = 0,
 )
 
 data class MemoriesUiState(
     val memories: List<MemoryGroup> = emptyList(),
     val onThisDay: List<MediaItem> = emptyList(),
     val isLoading: Boolean = true,
+    val error: String? = null,
 )
 
 @HiltViewModel
@@ -34,54 +36,62 @@ class MemoriesViewModel @Inject constructor(
 
     init { loadMemories() }
 
+    fun refresh() = loadMemories()
+
     private fun loadMemories() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val groups = mediaRepository.loadMedia(MediaQuery(sortOrder = SortOrder.NEWEST))
                 val allItems = groups.flatMap { it.items }
 
-                // On this day - same month/day from previous years
                 val cal = Calendar.getInstance()
                 val currentMonth = cal.get(Calendar.MONTH)
                 val currentDay = cal.get(Calendar.DAY_OF_MONTH)
                 val currentYear = cal.get(Calendar.YEAR)
 
+                // Reuse a single Calendar to avoid O(N) allocations
+                val itemCal = Calendar.getInstance()
+
                 val onThisDay = allItems.filter { item ->
-                    val itemCal = Calendar.getInstance().apply {
-                        timeInMillis = (item.dateTaken ?: item.dateAdded) * 1000
-                    }
+                    itemCal.timeInMillis = (item.dateTaken ?: item.dateAdded) * 1000L
                     itemCal.get(Calendar.MONTH) == currentMonth &&
                             itemCal.get(Calendar.DAY_OF_MONTH) == currentDay &&
-                            itemCal.get(Calendar.YEAR) < currentYear
+                            itemCal.get(Calendar.YEAR) <= currentYear
                 }
 
                 // Group by month/year for memories
                 val memories = allItems
                     .groupBy { item ->
-                        val itemCal = Calendar.getInstance().apply {
-                            timeInMillis = (item.dateTaken ?: item.dateAdded) * 1000
-                        }
-                        val month = itemCal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault()) ?: ""
+                        itemCal.timeInMillis = (item.dateTaken ?: item.dateAdded) * 1000L
+                        val month = itemCal.get(Calendar.MONTH)
                         val year = itemCal.get(Calendar.YEAR)
-                        Pair("Best of $month $year", year)
+                        Pair(month, year)
                     }
                     .entries
-                    .filter { it.value.size >= 5 } // only groups with enough photos
-                    .take(10)
-                    .map { (labelYear, items) ->
+                    .filter { it.value.size >= 3 }
+                    .map { (monthYear, items) ->
+                        val (month, year) = monthYear
+                        // Use numeric month as fallback to avoid blank labels
+                        itemCal.set(Calendar.MONTH, month)
+                        val monthName = itemCal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault())
+                            ?.takeIf { it.isNotBlank() }
+                            ?: (month + 1).toString()
                         MemoryGroup(
-                            label = labelYear.first,
+                            label = "Best of $monthName $year",
                             items = items.take(20),
-                            year = labelYear.second,
+                            year = year,
+                            monthIndex = month,
                         )
                     }
+                    // Explicit sort: newest month first, independent of repository ordering
+                    .sortedByDescending { it.year * 100 + it.monthIndex }
 
                 _uiState.update {
                     it.copy(memories = memories, onThisDay = onThisDay, isLoading = false)
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false) }
+                _uiState.update { it.copy(isLoading = false, error = "Failed to load memories") }
             }
         }
     }

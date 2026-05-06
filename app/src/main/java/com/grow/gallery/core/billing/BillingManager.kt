@@ -24,7 +24,9 @@ class BillingManager @Inject constructor() {
     private val _purchaseState = MutableStateFlow(PurchaseState.IDLE)
     val purchaseState: Flow<PurchaseState> = _purchaseState.asStateFlow()
 
-    // Clean abstraction - real Google Play Billing would be wired here
+    // Clean abstraction — real Google Play Billing would be wired here.
+    // Prices are placeholders; production uses ProductDetails.formattedPrice from Play Billing
+    // which returns locale- and currency-correct strings.
     val availablePlans = listOf(
         PremiumPlan("yearly", "Yearly", "$29.99/year", "year", isBestValue = true),
         PremiumPlan("monthly", "Monthly", "$4.99/month", "month"),
@@ -35,7 +37,7 @@ class BillingManager @Inject constructor() {
         // TODO: Integrate Google Play Billing Library 7.x
         // 1. Connect BillingClient
         // 2. queryProductDetailsAsync for the planId
-        // 3. launchBillingFlow
+        // 3. launchBillingFlow (requires Activity reference — wire via ActivityResultContract)
         // 4. Handle PurchasesUpdatedListener
         // 5. Acknowledge purchase on server
         _purchaseState.value = PurchaseState.LOADING
@@ -47,7 +49,9 @@ class BillingManager @Inject constructor() {
         return Result.failure(UnsupportedOperationException("Billing not connected"))
     }
 
-    fun setPremium(isPremium: Boolean) {
-        _isPremium.value = isPremium
+    // Internal — only callable within this module (e.g. from billing callbacks after purchase verification).
+    // Not exposed publicly to prevent monetization bypass.
+    internal fun grantPremium() {
+        _isPremium.value = true
     }
 }
