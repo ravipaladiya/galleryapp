@@ -103,6 +103,7 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.serialization.json)
 
+    implementation(libs.material)
     implementation(libs.biometric)
     implementation(libs.work.runtime.ktx)
 
