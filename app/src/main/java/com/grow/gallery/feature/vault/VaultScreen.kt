@@ -9,6 +9,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
@@ -399,7 +400,7 @@ private fun VaultItemSheet(
                 leadingContent = {
                     Icon(Icons.Default.LockOpen, null, tint = MaterialTheme.colorScheme.error)
                 },
-                modifier = androidx.compose.foundation.clickable { onRemove() },
+                modifier = Modifier.clickable { onRemove() },
             )
         }
     }
