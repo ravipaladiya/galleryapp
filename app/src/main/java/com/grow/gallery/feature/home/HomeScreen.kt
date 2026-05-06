@@ -1,19 +1,18 @@
 package com.grow.gallery.feature.home
 
 import android.Manifest
+import android.app.Activity
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.*
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -50,6 +49,23 @@ fun HomeScreen(
 
     var showSortFilter by remember { mutableStateOf(false) }
 
+    // System delete confirmation dialog launcher (Android R+)
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        viewModel.onDeleteResult(result.resultCode == Activity.RESULT_OK)
+    }
+
+    // Launch the system delete intent when the ViewModel sets it
+    LaunchedEffect(uiState.pendingDeleteIntent) {
+        uiState.pendingDeleteIntent?.let { pendingIntent ->
+            viewModel.onDeleteIntentConsumed()
+            deleteLauncher.launch(
+                IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+            )
+        }
+    }
+
     val permissions = remember {
         when {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
@@ -67,7 +83,7 @@ fun HomeScreen(
         }
     }
 
-    val multiplePermissionsState = rememberMultiplePermissionsState(permissions) { results ->
+    val multiplePermissionsState = rememberMultiplePermissionsState(permissions) { _ ->
         viewModel.onPermissionResult()
     }
 
@@ -81,7 +97,6 @@ fun HomeScreen(
         }
     }
 
-    // Handle share intent when URIs are ready
     LaunchedEffect(uiState.shareUris) {
         uiState.shareUris?.let { uris ->
             if (uris.isNotEmpty()) {
@@ -96,7 +111,6 @@ fun HomeScreen(
         }
     }
 
-    // Show snackbar messages from viewmodel
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { msg ->
             snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
@@ -110,9 +124,7 @@ fun HomeScreen(
             topBar = {
                 AnimatedVisibility(visible = !uiState.isSelectionMode) {
                     LargeTopAppBar(
-                        title = {
-                            Text("Photos", fontWeight = FontWeight.Bold)
-                        },
+                        title = { Text("Photos", fontWeight = FontWeight.Bold) },
                         actions = {
                             IconButton(onClick = { showSortFilter = true }) {
                                 Icon(Icons.Default.FilterList, "Sort & Filter")
@@ -180,15 +192,10 @@ fun HomeScreen(
                         selectedItems = uiState.selectedItems,
                         isSelectionMode = uiState.isSelectionMode,
                         onItemClick = { item ->
-                            if (uiState.isSelectionMode) {
-                                viewModel.toggleSelection(item.id)
-                            } else {
-                                onOpenViewer(item.id, item.isVideo)
-                            }
+                            if (uiState.isSelectionMode) viewModel.toggleSelection(item.id)
+                            else onOpenViewer(item.id, item.isVideo)
                         },
-                        onItemLongClick = { item ->
-                            viewModel.enterSelectionMode(item.id)
-                        },
+                        onItemLongClick = { item -> viewModel.enterSelectionMode(item.id) },
                         contentPadding = paddingValues,
                         selectionMode = uiState.isSelectionMode,
                     )
@@ -196,7 +203,6 @@ fun HomeScreen(
             }
         }
 
-        // Selection bottom bar anchored to screen bottom
         AnimatedVisibility(
             visible = uiState.isSelectionMode,
             enter = slideInVertically { it },
@@ -212,11 +218,10 @@ fun HomeScreen(
         }
     }
 
-    // Delete confirmation dialog
     if (uiState.showDeleteConfirm) {
         ConfirmDialog(
             title = "Delete ${uiState.selectedItems.size} item(s)?",
-            message = "Selected photos and videos will be deleted permanently.",
+            message = "Selected photos and videos will be moved to the system trash.",
             confirmText = "Delete",
             onConfirm = viewModel::confirmDeleteSelected,
             onDismiss = viewModel::cancelDelete,
@@ -240,8 +245,8 @@ private fun MediaTimeline(
     groups: List<MediaGroup>,
     selectedItems: Set<Long>,
     isSelectionMode: Boolean,
-    onItemClick: (com.grow.gallery.core.media.MediaItem) -> Unit,
-    onItemLongClick: (com.grow.gallery.core.media.MediaItem) -> Unit,
+    onItemClick: (MediaItem) -> Unit,
+    onItemLongClick: (MediaItem) -> Unit,
     contentPadding: PaddingValues,
     selectionMode: Boolean = false,
 ) {
@@ -265,10 +270,7 @@ private fun MediaTimeline(
                     modifier = Modifier.padding(top = 8.dp),
                 )
             }
-            items(
-                items = group.items,
-                key = { it.id },
-            ) { item ->
+            items(items = group.items, key = { it.id }) { item ->
                 MediaGridItem(
                     item = item,
                     isSelected = selectedItems.contains(item.id),
@@ -354,11 +356,7 @@ private fun SelectionAction(
         IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
             Icon(icon, label, tint = tint, modifier = Modifier.size(24.dp))
         }
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = tint,
-        )
+        Text(label, style = MaterialTheme.typography.labelSmall, color = tint)
     }
 }
 
@@ -390,7 +388,6 @@ private fun SortFilterSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.sm),
             )
-
             listOf(
                 SortOrder.NEWEST to "Newest First",
                 SortOrder.OLDEST to "Oldest First",
@@ -400,9 +397,7 @@ private fun SortFilterSheet(
                 ListItem(
                     headlineContent = { Text(label) },
                     trailingContent = {
-                        if (selectedSort == sort) {
-                            Icon(Icons.Default.Check, null, tint = Brand.Blue)
-                        }
+                        if (selectedSort == sort) Icon(Icons.Default.Check, null, tint = Brand.Blue)
                     },
                     modifier = Modifier.clickable { selectedSort = sort },
                 )
@@ -417,7 +412,6 @@ private fun SortFilterSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.sm),
             )
-
             listOf(
                 MediaFilter.ALL to "All",
                 MediaFilter.PHOTOS to "Photos",
@@ -427,9 +421,7 @@ private fun SortFilterSheet(
                 ListItem(
                     headlineContent = { Text(label) },
                     trailingContent = {
-                        if (selectedFilter == filter) {
-                            Icon(Icons.Default.Check, null, tint = Brand.Blue)
-                        }
+                        if (selectedFilter == filter) Icon(Icons.Default.Check, null, tint = Brand.Blue)
                     },
                     modifier = Modifier.clickable { selectedFilter = filter },
                 )
@@ -450,7 +442,6 @@ private fun SortFilterSheet(
                     },
                     modifier = Modifier.weight(1f),
                 ) { Text("Reset") }
-
                 Button(
                     onClick = {
                         onSortSelected(selectedSort)
