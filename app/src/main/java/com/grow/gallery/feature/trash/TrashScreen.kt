@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material.icons.Icons
@@ -35,6 +36,7 @@ fun TrashScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showEmptyDialog by remember { mutableStateOf(false) }
+    var selectedItem by remember { mutableStateOf<TrashItem?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val deleteLauncher = rememberLauncherForActivityResult(
@@ -44,9 +46,11 @@ fun TrashScreen(
     }
 
     LaunchedEffect(uiState.pendingDeleteIntent) {
-        uiState.pendingDeleteIntent?.let { intent ->
+        uiState.pendingDeleteIntent?.let { pendingIntent ->
             viewModel.onDeleteIntentConsumed()
-            deleteLauncher.launch(IntentSenderRequest.Builder(intent.intentSender).build())
+            deleteLauncher.launch(
+                IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+            )
         }
     }
 
@@ -112,7 +116,6 @@ fun TrashScreen(
                             modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                         )
                     }
-
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         contentPadding = PaddingValues(bottom = 16.dp),
@@ -122,8 +125,7 @@ fun TrashScreen(
                         items(uiState.items, key = { it.mediaId }) { trashItem ->
                             TrashMediaItem(
                                 item = trashItem,
-                                onRestore = { viewModel.restore(trashItem) },
-                                onDelete = { viewModel.deletePermanently(trashItem) },
+                                onClick = { selectedItem = trashItem },
                             )
                         }
                     }
@@ -145,22 +147,32 @@ fun TrashScreen(
             isDestructive = true,
         )
     }
+
+    selectedItem?.let { item ->
+        TrashItemSheet(
+            item = item,
+            onRestore = {
+                viewModel.restore(item)
+                selectedItem = null
+            },
+            onDelete = {
+                viewModel.deletePermanently(item)
+                selectedItem = null
+            },
+            onDismiss = { selectedItem = null },
+        )
+    }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TrashMediaItem(
-    item: TrashItem,
-    onRestore: () -> Unit,
-    onDelete: () -> Unit,
-) {
+private fun TrashMediaItem(item: TrashItem, onClick: () -> Unit) {
     val daysLeft = ((item.expiresAt - System.currentTimeMillis()) / (1000 * 60 * 60 * 24)).coerceAtLeast(0)
-    var showMenu by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
             .aspectRatio(1f)
-            .background(MaterialTheme.colorScheme.surfaceVariant),
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(onClick = onClick),
     ) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
@@ -181,25 +193,37 @@ private fun TrashMediaItem(
         ) {
             Text("${daysLeft}d", fontSize = 10.sp, style = MaterialTheme.typography.labelSmall)
         }
-        Box(modifier = Modifier.align(Alignment.TopEnd)) {
-            IconButton(
-                onClick = { showMenu = true },
-                modifier = Modifier.size(32.dp),
-            ) {
-                Icon(Icons.Default.MoreVert, null, tint = androidx.compose.ui.graphics.Color.White, modifier = Modifier.size(16.dp))
-            }
-            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                DropdownMenuItem(
-                    text = { Text("Restore") },
-                    leadingIcon = { Icon(Icons.Default.Restore, null) },
-                    onClick = { showMenu = false; onRestore() },
-                )
-                DropdownMenuItem(
-                    text = { Text("Delete Permanently", color = MaterialTheme.colorScheme.error) },
-                    leadingIcon = { Icon(Icons.Default.DeleteForever, null, tint = MaterialTheme.colorScheme.error) },
-                    onClick = { showMenu = false; onDelete() },
-                )
-            }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TrashItemSheet(
+    item: TrashItem,
+    onRestore: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                item.displayName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.md),
+            )
+            ListItem(
+                headlineContent = { Text("Restore") },
+                leadingContent = { Icon(Icons.Default.RestoreFromTrash, null) },
+                modifier = Modifier.clickable { onRestore() },
+            )
+            ListItem(
+                headlineContent = { Text("Delete Permanently", color = MaterialTheme.colorScheme.error) },
+                leadingContent = {
+                    Icon(Icons.Default.DeleteForever, null, tint = MaterialTheme.colorScheme.error)
+                },
+                modifier = Modifier.clickable { onDelete() },
+            )
         }
     }
 }

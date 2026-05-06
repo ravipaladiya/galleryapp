@@ -17,6 +17,7 @@ import com.grow.gallery.core.designsystem.components.*
 @Composable
 fun AppLockScreen(
     onNavigateUp: () -> Unit,
+    onSetupPin: () -> Unit = {},
     viewModel: AppLockViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -45,25 +46,27 @@ fun AppLockScreen(
                 )
             }
             if (uiState.appLockEnabled) {
-                item {
-                    SettingRow(
-                        title = "Use Biometric",
-                        subtitle = "Fingerprint or face unlock",
-                        leading = { Icon(Icons.Default.Fingerprint, null) },
-                        trailing = {
-                            Switch(
-                                checked = uiState.biometricEnabled,
-                                onCheckedChange = viewModel::setBiometricEnabled,
-                            )
-                        },
-                    )
+                if (uiState.isBiometricAvailable) {
+                    item {
+                        SettingRow(
+                            title = "Use Biometric",
+                            subtitle = "Fingerprint or face unlock",
+                            leading = { Icon(Icons.Default.Fingerprint, null) },
+                            trailing = {
+                                Switch(
+                                    checked = uiState.biometricEnabled,
+                                    onCheckedChange = viewModel::setBiometricEnabled,
+                                )
+                            },
+                        )
+                    }
                 }
                 item {
                     SettingRow(
                         title = "Change PIN",
                         leading = { Icon(Icons.Default.Pin, null) },
                         trailing = { Icon(Icons.Default.ChevronRight, null) },
-                        onClick = { /* Navigate to PIN setup via VaultScreen flow */ },
+                        onClick = onSetupPin,
                     )
                 }
             }

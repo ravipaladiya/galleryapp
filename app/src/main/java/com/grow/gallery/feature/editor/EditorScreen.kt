@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.grow.gallery.core.designsystem.*
+import com.grow.gallery.core.designsystem.components.ConfirmDialog
 import com.grow.gallery.core.designsystem.components.GalleryTopBar
 
 data class EditorTool(
@@ -41,14 +42,22 @@ fun EditorScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var selectedTool by remember { mutableStateOf<EditorTool?>(null) }
+    var showSaveSuccessDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(mediaId) { viewModel.loadMedia(mediaId) }
 
+    LaunchedEffect(uiState.isSaved) {
+        if (uiState.isSaved) {
+            showSaveSuccessDialog = true
+            viewModel.onSavedHandled()
+        }
+    }
+
     val tools = remember {
         listOf(
-            EditorTool("crop", "Crop", Icons.Default.Crop),
             EditorTool("adjust", "Adjust", Icons.Default.Tune),
             EditorTool("filter", "Filter", Icons.Default.AutoFixHigh),
+            EditorTool("crop", "Crop", Icons.Default.Crop),
             EditorTool("enhance", "Enhance", Icons.Default.AutoAwesome, isPremium = true),
             EditorTool("remove_bg", "Remove BG", Icons.Default.ContentCut, isPremium = true),
             EditorTool("colorize", "Colorize", Icons.Default.Palette, isPremium = true),
@@ -59,13 +68,24 @@ fun EditorScreen(
     Scaffold(
         topBar = {
             GalleryTopBar(
-                title = "AI Editor",
+                title = "Photo Editor",
                 onNavigateUp = onNavigateUp,
                 actions = {
-                    TextButton(
-                        onClick = { /* TODO: Save */ onNavigateUp() },
-                    ) {
-                        Text("Save", fontWeight = FontWeight.SemiBold, color = Brand.Blue)
+                    if (uiState.isProcessing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .padding(end = Spacing.sm),
+                            strokeWidth = 2.dp,
+                            color = Brand.Blue,
+                        )
+                    } else {
+                        TextButton(onClick = viewModel::resetAdjustments) {
+                            Text("Reset")
+                        }
+                        TextButton(onClick = viewModel::saveImage) {
+                            Text("Save", fontWeight = FontWeight.SemiBold, color = Brand.Blue)
+                        }
                     }
                 },
             )
@@ -96,13 +116,29 @@ fun EditorScreen(
                     )
                 }
                 if (uiState.isProcessing) {
-                    CircularProgressIndicator(color = Brand.Blue)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = Brand.Blue)
+                            Spacer(Modifier.height(Spacing.sm))
+                            Text("Saving…", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
             }
 
             // Tool options based on selection
             selectedTool?.let { tool ->
-                EditorToolOptions(tool = tool, onClose = { selectedTool = null })
+                EditorToolOptions(
+                    tool = tool,
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    onClose = { selectedTool = null },
+                )
             }
 
             // Tool list
@@ -120,6 +156,31 @@ fun EditorScreen(
             }
         }
     }
+
+    if (showSaveSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveSuccessDialog = false; onNavigateUp() },
+            icon = { Icon(Icons.Default.CheckCircle, null, tint = Brand.Blue) },
+            title = { Text("Saved") },
+            text = { Text("Edited photo saved to Pictures/GalleryApp.") },
+            confirmButton = {
+                Button(onClick = { showSaveSuccessDialog = false; onNavigateUp() }) {
+                    Text("Done")
+                }
+            },
+        )
+    }
+
+    uiState.error?.let { err ->
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Save Failed") },
+            text = { Text(err) },
+            confirmButton = {
+                Button(onClick = { }) { Text("OK") }
+            },
+        )
+    }
 }
 
 @Composable
@@ -132,9 +193,7 @@ private fun EditorToolChip(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .background(
-                if (isSelected) Brand.BlueLight else MaterialTheme.colorScheme.surfaceVariant
-            )
+            .background(if (isSelected) Brand.BlueLight else MaterialTheme.colorScheme.surfaceVariant)
             .border(
                 width = if (isSelected) 1.5.dp else 0.dp,
                 color = if (isSelected) Brand.Blue else MaterialTheme.colorScheme.outline,
@@ -156,20 +215,19 @@ private fun EditorToolChip(
             color = if (isSelected) Brand.Blue else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         if (tool.isPremium) {
-            Text(
-                text = "✨",
-                style = MaterialTheme.typography.labelSmall,
-            )
+            Text("✨", style = MaterialTheme.typography.labelSmall)
         }
     }
 }
 
 @Composable
-private fun EditorToolOptions(tool: EditorTool, onClose: () -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        tonalElevation = 3.dp,
-    ) {
+private fun EditorToolOptions(
+    tool: EditorTool,
+    uiState: EditorUiState,
+    viewModel: EditorViewModel,
+    onClose: () -> Unit,
+) {
+    Surface(modifier = Modifier.fillMaxWidth(), tonalElevation = 3.dp) {
         Column(modifier = Modifier.padding(Spacing.lg)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -189,7 +247,7 @@ private fun EditorToolOptions(tool: EditorTool, onClose: () -> Unit) {
                     color = Brand.GoldStart.copy(alpha = 0.15f),
                 ) {
                     Text(
-                        "✨ Premium feature - Upgrade to unlock",
+                        "✨ Premium feature — Upgrade to unlock",
                         style = MaterialTheme.typography.bodySmall,
                         color = Brand.GoldEnd,
                         modifier = Modifier.padding(Spacing.sm),
@@ -197,15 +255,14 @@ private fun EditorToolOptions(tool: EditorTool, onClose: () -> Unit) {
                 }
             } else {
                 when (tool.id) {
-                    "adjust" -> AdjustOptions()
+                    "adjust" -> AdjustOptions(uiState = uiState, viewModel = viewModel)
                     "crop" -> CropOptions()
-                    else -> {
-                        Text(
-                            "${tool.label} options",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    "filter" -> FilterOptions()
+                    else -> Text(
+                        "${tool.label} options",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -213,21 +270,32 @@ private fun EditorToolOptions(tool: EditorTool, onClose: () -> Unit) {
 }
 
 @Composable
-private fun AdjustOptions() {
-    val adjustments = listOf("Brightness", "Contrast", "Saturation", "Sharpness")
-    adjustments.forEach { adj ->
-        var value by remember { mutableStateOf(0f) }
+private fun AdjustOptions(uiState: EditorUiState, viewModel: EditorViewModel) {
+    val adjustments = listOf(
+        "Brightness" to (uiState.brightness to viewModel::setBrightness),
+        "Contrast" to (uiState.contrast to viewModel::setContrast),
+        "Saturation" to (uiState.saturation to viewModel::setSaturation),
+        "Sharpness" to (uiState.sharpness to viewModel::setSharpness),
+    )
+    adjustments.forEach { (label, valueSetter) ->
+        val (value, setter) = valueSetter
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(adj, modifier = Modifier.width(100.dp), style = MaterialTheme.typography.bodySmall)
+            Text(label, modifier = Modifier.width(90.dp), style = MaterialTheme.typography.bodySmall)
             Slider(
                 value = value,
-                onValueChange = { value = it },
+                onValueChange = setter,
                 valueRange = -1f..1f,
                 modifier = Modifier.weight(1f),
                 colors = SliderDefaults.colors(thumbColor = Brand.Blue, activeTrackColor = Brand.Blue),
+            )
+            Text(
+                "%.1f".format(value),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(32.dp),
             )
         }
     }
@@ -235,7 +303,7 @@ private fun AdjustOptions() {
 
 @Composable
 private fun CropOptions() {
-    val ratios = listOf("Free", "1:1", "4:3", "16:9", "3:2")
+    val ratios = listOf("Free", "1:1", "4:3", "16:9", "3:2", "9:16")
     var selected by remember { mutableStateOf("Free") }
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         ratios.forEach { ratio ->
@@ -243,6 +311,21 @@ private fun CropOptions() {
                 selected = selected == ratio,
                 onClick = { selected = ratio },
                 label = { Text(ratio, style = MaterialTheme.typography.labelSmall) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun FilterOptions() {
+    val filters = listOf("None", "Vivid", "Warm", "Cool", "B&W", "Fade", "Chrome")
+    var selected by remember { mutableStateOf("None") }
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        items(filters) { filter ->
+            FilterChip(
+                selected = selected == filter,
+                onClick = { selected = filter },
+                label = { Text(filter, style = MaterialTheme.typography.labelSmall) },
             )
         }
     }

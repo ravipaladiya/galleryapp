@@ -22,7 +22,7 @@ fun AlbumDetailScreen(
     albumId: Long,
     albumName: String,
     onOpenViewer: (Long, Boolean) -> Unit,
-    onOpenSlideshow: () -> Unit,
+    onOpenSlideshow: (Long) -> Unit,
     onNavigateUp: () -> Unit,
     viewModel: AlbumDetailViewModel = hiltViewModel(),
 ) {
@@ -50,7 +50,7 @@ fun AlbumDetailScreen(
                 },
                 actions = {
                     IconButton(
-                        onClick = onOpenSlideshow,
+                        onClick = { onOpenSlideshow(albumId) },
                         enabled = uiState.items.isNotEmpty(),
                     ) {
                         Icon(Icons.Default.PlayCircle, "Slideshow")
@@ -87,10 +87,7 @@ fun AlbumDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                 ) {
-                    items(
-                        items = uiState.items,
-                        key = { it.id },
-                    ) { item ->
+                    items(items = uiState.items, key = { it.id }) { item ->
                         MediaGridItem(
                             item = item,
                             isSelected = false,

@@ -31,10 +31,23 @@ class AlbumDetailViewModel @Inject constructor(
 
     fun loadAlbumMedia(albumId: Long) {
         currentAlbumId = albumId
+        reload()
+    }
+
+    fun setSortOrder(order: SortOrder) {
+        _uiState.update { it.copy(sortOrder = order, showSortSheet = false) }
+        reload()
+    }
+
+    fun showSortSheet() { _uiState.update { it.copy(showSortSheet = true) } }
+    fun dismissSortSheet() { _uiState.update { it.copy(showSortSheet = false) } }
+
+    private fun reload() {
+        if (currentAlbumId < 0) return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                val query = MediaQuery(albumId = albumId, sortOrder = _uiState.value.sortOrder)
+                val query = MediaQuery(albumId = currentAlbumId, sortOrder = _uiState.value.sortOrder)
                 val groups = mediaRepository.loadMedia(query)
                 val items = groups.flatMap { it.items }
                 _uiState.update { it.copy(items = items, isLoading = false) }
@@ -43,12 +56,4 @@ class AlbumDetailViewModel @Inject constructor(
             }
         }
     }
-
-    fun setSortOrder(order: SortOrder) {
-        _uiState.update { it.copy(sortOrder = order, showSortSheet = false) }
-        if (currentAlbumId >= 0) loadAlbumMedia(currentAlbumId)
-    }
-
-    fun showSortSheet() { _uiState.update { it.copy(showSortSheet = true) } }
-    fun dismissSortSheet() { _uiState.update { it.copy(showSortSheet = false) } }
 }

@@ -92,7 +92,7 @@ fun BackupScreen(
                     subtitle = "Not signed in",
                     leading = { Icon(Icons.Default.AccountCircle, null) },
                     trailing = { Icon(Icons.Default.ChevronRight, null) },
-                    onClick = { /* Sign in */ },
+                    onClick = { },
                 )
             }
         }

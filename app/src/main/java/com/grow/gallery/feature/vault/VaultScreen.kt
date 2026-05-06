@@ -197,7 +197,7 @@ private fun VaultLockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> Uni
                     val executor = ContextCompat.getMainExecutor(activity)
                     val callback = object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                            viewModel.biometricUnlock()
+                            viewModel.unlockWithBiometric()
                         }
                     }
                     BiometricPrompt(activity, executor, callback).authenticate(

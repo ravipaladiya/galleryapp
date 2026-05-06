@@ -30,10 +30,10 @@ class DataStoreManager @Inject constructor(
         private val KEY_SLIDESHOW_SPEED = intPreferencesKey("slideshow_speed")
         private val KEY_SLIDESHOW_TRANSITION = stringPreferencesKey("slideshow_transition")
         private val KEY_BACKUP_WIFI_ONLY = booleanPreferencesKey("backup_wifi_only")
-        private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
         private val KEY_BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
-        private val KEY_APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_ui_enabled")
+        private val KEY_APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled_settings")
         private val KEY_APP_LOCK_BIOMETRIC = booleanPreferencesKey("app_lock_biometric")
+        private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
         private const val RECENT_SEARCHES_DELIMITER = "||"
         private const val MAX_RECENT_SEARCHES = 10
     }

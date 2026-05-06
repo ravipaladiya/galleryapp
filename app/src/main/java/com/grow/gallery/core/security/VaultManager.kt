@@ -1,19 +1,25 @@
 package com.grow.gallery.core.security
 
 import android.content.Context
+import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.withContext
+import java.io.File
 import java.security.KeyStore
 import javax.crypto.Cipher
+import javax.crypto.CipherInputStream
+import javax.crypto.CipherOutputStream
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +37,9 @@ class VaultManager @Inject constructor(
         private val KEY_BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
         private val KEY_APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
         private const val KEYSTORE_ALIAS = "gallery_vault_key"
+        private const val VAULT_DIR = "vault"
+        private const val GCM_IV_SIZE = 12
+        private const val GCM_TAG_SIZE = 128
     }
 
     val isVaultEnabled: Flow<Boolean> = dataStore.data.map { it[KEY_VAULT_ENABLED] ?: false }
@@ -71,6 +80,64 @@ class VaultManager @Inject constructor(
                     BiometricManager.Authenticators.DEVICE_CREDENTIAL
         ) == BiometricManager.BIOMETRIC_SUCCESS
     }
+
+    /**
+     * Copies a media file from [sourceUri] into the app's private vault directory,
+     * encrypted with AES-GCM using the Android Keystore key.
+     * Returns the vault file path (relative to vault dir) or null on failure.
+     */
+    suspend fun addToVault(sourceUri: Uri, originalName: String): String? =
+        withContext(Dispatchers.IO) {
+            try {
+                val vaultDir = File(context.filesDir, VAULT_DIR).also { it.mkdirs() }
+                val vaultFileName = "${System.currentTimeMillis()}_${sanitize(originalName)}.enc"
+                val vaultFile = File(vaultDir, vaultFileName)
+
+                val secretKey = getOrCreateSecretKey()
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+                val iv = cipher.iv
+
+                context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                    vaultFile.outputStream().use { fileOut ->
+                        fileOut.write(iv)
+                        CipherOutputStream(fileOut, cipher).use { cipherOut ->
+                            input.copyTo(cipherOut)
+                        }
+                    }
+                }
+                vaultFileName
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+    /**
+     * Opens an encrypted vault file for reading (returns an InputStream).
+     * Caller is responsible for closing the stream.
+     */
+    fun openVaultFile(vaultFileName: String): java.io.InputStream? {
+        return try {
+            val vaultFile = File(File(context.filesDir, VAULT_DIR), vaultFileName)
+            if (!vaultFile.exists()) return null
+            val secretKey = getOrCreateSecretKey()
+            val fileIn = vaultFile.inputStream()
+            val iv = ByteArray(GCM_IV_SIZE).also { fileIn.read(it) }
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_SIZE, iv))
+            CipherInputStream(fileIn, cipher)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Deletes an encrypted vault file from internal storage. */
+    fun deleteVaultFile(vaultFileName: String) {
+        File(File(context.filesDir, VAULT_DIR), vaultFileName).delete()
+    }
+
+    private fun sanitize(name: String): String =
+        name.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(40)
 
     private fun hashPin(pin: String): String {
         val bytes = pin.toByteArray()

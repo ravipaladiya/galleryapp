@@ -20,8 +20,9 @@ import javax.inject.Inject
 data class TrashUiState(
     val items: List<TrashItem> = emptyList(),
     val isLoading: Boolean = true,
-    val snackbarMessage: String? = null,
     val pendingDeleteIntent: PendingIntent? = null,
+    val pendingDeleteItem: TrashItem? = null,
+    val snackbarMessage: String? = null,
 )
 
 @HiltViewModel
@@ -38,8 +39,9 @@ class TrashViewModel @Inject constructor(
         viewModelScope.launch { trashDao.deleteExpired() }
     }
 
-    fun load() {
+    private fun load() {
         viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
             val items = trashDao.getAllTrashItems()
             _uiState.update { it.copy(items = items, isLoading = false) }
         }
@@ -55,36 +57,22 @@ class TrashViewModel @Inject constructor(
 
     fun deletePermanently(item: TrashItem) {
         viewModelScope.launch {
-            val deleted = deleteFromMediaStore(Uri.parse(item.uri))
-            trashDao.deleteById(item.mediaId)
-            load()
-            _uiState.update {
-                it.copy(
-                    snackbarMessage = if (deleted) "${item.displayName} permanently deleted."
-                    else "Item removed from list.",
-                )
-            }
-        }
-    }
-
-    fun requestPermanentDeleteAll() {
-        viewModelScope.launch {
-            val items = _uiState.value.items
-            if (items.isEmpty()) return@launch
-
+            val uri = Uri.parse(item.uri)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val uris = items.mapNotNull { runCatching { Uri.parse(it.uri) }.getOrNull() }
-                if (uris.isNotEmpty()) {
-                    val pendingIntent = runCatching {
-                        MediaStore.createDeleteRequest(context.contentResolver, uris)
-                    }.getOrNull()
-                    if (pendingIntent != null) {
-                        _uiState.update { it.copy(pendingDeleteIntent = pendingIntent) }
-                        return@launch
-                    }
+                try {
+                    val pendingIntent = MediaStore.createDeleteRequest(
+                        context.contentResolver, listOf(uri)
+                    )
+                    _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = item) }
+                } catch (_: Exception) {
+                    deleteFromDbOnly(item)
                 }
+            } else {
+                withContext(Dispatchers.IO) {
+                    try { context.contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                }
+                deleteFromDbOnly(item)
             }
-            emptyTrashDirectly()
         }
     }
 
@@ -93,34 +81,54 @@ class TrashViewModel @Inject constructor(
     }
 
     fun onDeleteResult(confirmed: Boolean) {
+        val item = _uiState.value.pendingDeleteItem
+        _uiState.update { it.copy(pendingDeleteItem = null) }
         if (confirmed) {
             viewModelScope.launch {
-                trashDao.deleteAll()
-                load()
-                _uiState.update { it.copy(snackbarMessage = "Trash emptied.") }
+                if (item != null) {
+                    deleteFromDbOnly(item)
+                    _uiState.update { it.copy(snackbarMessage = "${item.displayName} permanently deleted.") }
+                } else {
+                    emptyTrashFromDbOnly()
+                    _uiState.update { it.copy(snackbarMessage = "Trash emptied.") }
+                }
             }
         }
     }
 
     fun emptyTrash() {
-        viewModelScope.launch { emptyTrashDirectly() }
+        viewModelScope.launch {
+            val items = _uiState.value.items
+            if (items.isEmpty()) return@launch
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val uris = items.map { Uri.parse(it.uri) }
+                    val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, uris)
+                    _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = null) }
+                    return@launch
+                } catch (_: Exception) {}
+            }
+            withContext(Dispatchers.IO) {
+                items.forEach { item ->
+                    try { context.contentResolver.delete(Uri.parse(item.uri), null, null) } catch (_: Exception) {}
+                }
+            }
+            emptyTrashFromDbOnly()
+            _uiState.update { it.copy(snackbarMessage = "Trash emptied.") }
+        }
     }
 
-    private suspend fun emptyTrashDirectly() {
-        val items = _uiState.value.items
-        items.forEach { item ->
-            runCatching { deleteFromMediaStore(Uri.parse(item.uri)) }
-        }
+    private suspend fun deleteFromDbOnly(item: TrashItem) {
+        trashDao.deleteById(item.mediaId)
+        load()
+    }
+
+    private suspend fun emptyTrashFromDbOnly() {
         trashDao.deleteAll()
         load()
-        _uiState.update { it.copy(snackbarMessage = "Trash emptied.") }
     }
 
     fun onSnackbarShown() {
         _uiState.update { it.copy(snackbarMessage = null) }
-    }
-
-    private suspend fun deleteFromMediaStore(uri: Uri): Boolean = withContext(Dispatchers.IO) {
-        runCatching { context.contentResolver.delete(uri, null, null) > 0 }.getOrDefault(false)
     }
 }

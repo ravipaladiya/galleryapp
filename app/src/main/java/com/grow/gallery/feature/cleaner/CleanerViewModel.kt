@@ -1,22 +1,24 @@
 package com.grow.gallery.feature.cleaner
 
+import android.app.PendingIntent
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.grow.gallery.core.media.MediaQuery
+import com.grow.gallery.core.media.MediaItem
 import com.grow.gallery.core.media.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-enum class CleanerPhase { IDLE, SCANNING, RESULTS, DONE }
+enum class CleanerPhase { IDLE, SCANNING, RESULTS, CLEANING, DONE }
 
 data class CleanerCategory(
     val name: String,
     val itemCount: Int,
     val size: String,
     val isSelected: Boolean = true,
+    val items: List<MediaItem> = emptyList(),
 )
 
 data class CleanerUiState(
@@ -25,6 +27,9 @@ data class CleanerUiState(
     val totalReclaimable: String = "0 MB",
     val freedSpace: String = "0 MB",
     val deletedCount: Int = 0,
+    val pendingDeleteIntent: PendingIntent? = null,
+    val pendingDeleteItems: List<MediaItem> = emptyList(),
+    val snackbarMessage: String? = null,
 )
 
 @HiltViewModel
@@ -38,103 +43,167 @@ class CleanerViewModel @Inject constructor(
     fun startScan() {
         viewModelScope.launch {
             _uiState.update { it.copy(phase = CleanerPhase.SCANNING) }
-            delay(2500) // simulated scan time
 
-            val groups = mediaRepository.loadMedia(MediaQuery())
-            val allItems = groups.flatMap { it.items }
+            try {
+                val found = mediaRepository.getCleanerCategories()
+                val categories = mutableListOf<CleanerCategory>()
 
-            // Detect categories
-            val screenshots = allItems.filter {
-                it.displayName.lowercase().contains("screenshot") ||
-                        it.bucketName.lowercase().contains("screenshot")
-            }
-            val videos = allItems.filter { it.isVideo }
-            val largeItems = allItems.filter { it.size > 10_000_000 } // > 10MB
-
-            val categories = mutableListOf<CleanerCategory>()
-
-            if (screenshots.isNotEmpty()) {
-                categories.add(
-                    CleanerCategory(
-                        name = "Screenshots",
-                        itemCount = screenshots.size,
-                        size = screenshots.sumOf { it.size }.toFormattedSize(),
+                if (found.screenshots.isNotEmpty()) {
+                    categories.add(
+                        CleanerCategory(
+                            name = "Screenshots",
+                            itemCount = found.screenshots.size,
+                            size = found.screenshots.sumOf { it.size }.toFormattedSize(),
+                            items = found.screenshots,
+                        )
                     )
-                )
-            }
+                }
 
-            // Simulated similar photos detection
-            if (allItems.size > 10) {
-                val similarCount = allItems.size / 10
-                categories.add(
-                    CleanerCategory(
-                        name = "Similar Photos",
-                        itemCount = similarCount,
-                        size = (similarCount * 3_000_000L).toFormattedSize(),
+                if (found.burstPhotos.isNotEmpty()) {
+                    categories.add(
+                        CleanerCategory(
+                            name = "Burst / Similar Photos",
+                            itemCount = found.burstPhotos.size,
+                            size = found.burstPhotos.sumOf { it.size }.toFormattedSize(),
+                            items = found.burstPhotos,
+                        )
                     )
-                )
-            }
+                }
 
-            if (largeItems.isNotEmpty()) {
-                categories.add(
-                    CleanerCategory(
-                        name = "Large Videos",
-                        itemCount = largeItems.size,
-                        size = largeItems.sumOf { it.size }.toFormattedSize(),
+                if (found.largeMedia.isNotEmpty()) {
+                    categories.add(
+                        CleanerCategory(
+                            name = "Large Files (>50 MB)",
+                            itemCount = found.largeMedia.size,
+                            size = found.largeMedia.sumOf { it.size }.toFormattedSize(),
+                            items = found.largeMedia,
+                        )
                     )
-                )
-            }
+                }
 
-            val totalBytes = categories.sumOf { extractBytes(it.size) }
-            _uiState.update {
-                it.copy(
-                    phase = CleanerPhase.RESULTS,
-                    categories = categories,
-                    totalReclaimable = totalBytes.toFormattedSize(),
-                )
+                val totalBytes = categories.filter { it.isSelected }.sumOf { cat ->
+                    cat.items.sumOf { it.size }
+                }
+
+                _uiState.update {
+                    it.copy(
+                        phase = CleanerPhase.RESULTS,
+                        categories = categories,
+                        totalReclaimable = totalBytes.toFormattedSize(),
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        phase = CleanerPhase.IDLE,
+                        snackbarMessage = "Scan failed: ${e.message}",
+                    )
+                }
             }
+        }
+    }
+
+    fun toggleCategory(categoryName: String, selected: Boolean) {
+        _uiState.update { state ->
+            val updated = state.categories.map { cat ->
+                if (cat.name == categoryName) cat.copy(isSelected = selected) else cat
+            }
+            val totalBytes = updated.filter { it.isSelected }.sumOf { cat ->
+                cat.items.sumOf { it.size }
+            }
+            state.copy(categories = updated, totalReclaimable = totalBytes.toFormattedSize())
         }
     }
 
     fun cleanSelected() {
-        viewModelScope.launch {
-            val selected = _uiState.value.categories.filter { it.isSelected }
-            val count = selected.sumOf { it.itemCount }
-            val freed = selected.sumOf { extractBytes(it.size) }
-            delay(1000)
-            _uiState.update {
-                it.copy(
-                    phase = CleanerPhase.DONE,
-                    deletedCount = count,
-                    freedSpace = freed.toFormattedSize(),
-                )
-            }
-        }
+        val selectedItems = _uiState.value.categories
+            .filter { it.isSelected }
+            .flatMap { it.items }
+            .distinctBy { it.id }
+        if (selectedItems.isEmpty()) return
+        requestDelete(selectedItems)
     }
 
     fun cleanAll() {
+        val allItems = _uiState.value.categories
+            .flatMap { it.items }
+            .distinctBy { it.id }
+        if (allItems.isEmpty()) return
+        requestDelete(allItems)
+    }
+
+    private fun requestDelete(items: List<MediaItem>) {
         viewModelScope.launch {
-            val count = _uiState.value.categories.sumOf { it.itemCount }
-            val freed = extractBytes(_uiState.value.totalReclaimable)
-            delay(1000)
-            _uiState.update {
-                it.copy(
-                    phase = CleanerPhase.DONE,
-                    deletedCount = count,
-                    freedSpace = freed.toFormattedSize(),
-                )
+            _uiState.update { it.copy(phase = CleanerPhase.CLEANING) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    val pendingIntent = mediaRepository.prepareDelete(items)
+                    if (pendingIntent != null) {
+                        _uiState.update {
+                            it.copy(
+                                pendingDeleteIntent = pendingIntent,
+                                pendingDeleteItems = items,
+                                phase = CleanerPhase.RESULTS,
+                            )
+                        }
+                    } else {
+                        finalizeDeletion(items)
+                    }
+                } catch (e: Exception) {
+                    _uiState.update {
+                        it.copy(
+                            phase = CleanerPhase.RESULTS,
+                            snackbarMessage = "Delete failed: ${e.message}",
+                        )
+                    }
+                }
+            } else {
+                val result = mediaRepository.deleteMedia(items)
+                if (result.isSuccess) {
+                    finalizeDeletion(items)
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            phase = CleanerPhase.RESULTS,
+                            snackbarMessage = "Delete failed: ${result.exceptionOrNull()?.message}",
+                        )
+                    }
+                }
             }
         }
     }
 
-    private fun extractBytes(formatted: String): Long {
-        val num = formatted.replace(Regex("[^0-9.]"), "").toDoubleOrNull() ?: 0.0
-        return when {
-            formatted.contains("GB") -> (num * 1_000_000_000).toLong()
-            formatted.contains("MB") -> (num * 1_000_000).toLong()
-            formatted.contains("KB") -> (num * 1_000).toLong()
-            else -> num.toLong()
+    fun onDeleteIntentConsumed() {
+        _uiState.update { it.copy(pendingDeleteIntent = null) }
+    }
+
+    fun onDeleteResult(confirmed: Boolean) {
+        val items = _uiState.value.pendingDeleteItems
+        _uiState.update { it.copy(pendingDeleteItems = emptyList()) }
+        if (confirmed) {
+            finalizeDeletion(items)
+        } else {
+            _uiState.update { it.copy(phase = CleanerPhase.RESULTS) }
         }
+    }
+
+    private fun finalizeDeletion(items: List<MediaItem>) {
+        val freedBytes = items.sumOf { it.size }
+        _uiState.update {
+            it.copy(
+                phase = CleanerPhase.DONE,
+                deletedCount = items.size,
+                freedSpace = freedBytes.toFormattedSize(),
+            )
+        }
+    }
+
+    fun onSnackbarShown() {
+        _uiState.update { it.copy(snackbarMessage = null) }
+    }
+
+    fun reset() {
+        _uiState.update { CleanerUiState() }
     }
 
     private fun Long.toFormattedSize(): String = when {
