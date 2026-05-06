@@ -19,11 +19,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.accompanist.permissions.*
+import com.grow.gallery.core.common.*
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 import com.grow.gallery.core.media.*
@@ -43,6 +45,8 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
 
     var showSortFilter by remember { mutableStateOf(false) }
 
@@ -77,7 +81,31 @@ fun HomeScreen(
         }
     }
 
+    // Handle share intent when URIs are ready
+    LaunchedEffect(uiState.shareUris) {
+        uiState.shareUris?.let { uris ->
+            if (uris.isNotEmpty()) {
+                val mimeType = if (uris.size == 1) {
+                    uiState.mediaGroups.flatMap { it.items }
+                        .firstOrNull { it.uri == uris.first() }?.mimeType ?: "*/*"
+                } else "*/*"
+                context.shareMultipleMedia(uris, mimeType)
+                viewModel.onShareHandled()
+                viewModel.exitSelectionMode()
+            }
+        }
+    }
+
+    // Show snackbar messages from viewmodel
+    LaunchedEffect(uiState.snackbarMessage) {
+        uiState.snackbarMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg, duration = SnackbarDuration.Short)
+            viewModel.onSnackbarShown()
+        }
+    }
+
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             AnimatedVisibility(visible = !uiState.isSelectionMode) {
                 LargeTopAppBar(
@@ -178,10 +206,21 @@ fun HomeScreen(
     ) {
         SelectionActionBar(
             count = uiState.selectedItems.size,
-            onShare = { /* TODO */ },
-            onDelete = { /* TODO */ },
-            onMove = { /* TODO */ },
-            onFavorite = { /* TODO */ },
+            onShare = viewModel::prepareShare,
+            onDelete = viewModel::requestDeleteSelected,
+            onFavorite = viewModel::favoriteSelected,
+        )
+    }
+
+    // Delete confirmation dialog
+    if (uiState.showDeleteConfirm) {
+        ConfirmDialog(
+            title = "Delete ${uiState.selectedItems.size} item(s)?",
+            message = "Selected photos and videos will be deleted permanently.",
+            confirmText = "Delete",
+            onConfirm = viewModel::confirmDeleteSelected,
+            onDismiss = viewModel::cancelDelete,
+            isDestructive = true,
         )
     }
 
@@ -265,7 +304,6 @@ private fun SelectionActionBar(
     count: Int,
     onShare: () -> Unit,
     onDelete: () -> Unit,
-    onMove: () -> Unit,
     onFavorite: () -> Unit,
 ) {
     Surface(
@@ -281,7 +319,6 @@ private fun SelectionActionBar(
         ) {
             SelectionAction(Icons.Default.Share, "Share", onShare)
             SelectionAction(Icons.Default.Delete, "Delete", onDelete)
-            SelectionAction(Icons.Default.FolderOpen, "Move", onMove)
             SelectionAction(Icons.Default.FavoriteBorder, "Favorite", onFavorite)
         }
     }
@@ -405,4 +442,3 @@ private fun SortFilterSheet(
         }
     }
 }
-

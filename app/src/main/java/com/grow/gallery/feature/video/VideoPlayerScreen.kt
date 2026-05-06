@@ -38,6 +38,7 @@ fun VideoPlayerScreen(
     val context = LocalContext.current
     var showControls by remember { mutableStateOf(true) }
     var isMuted by remember { mutableStateOf(false) }
+    var isPlaying by remember { mutableStateOf(false) }
 
     LaunchedEffect(mediaId) { viewModel.loadVideo(mediaId) }
 
@@ -48,6 +49,17 @@ fun VideoPlayerScreen(
         }
     }
 
+    // Sync isPlaying state with player via listener
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+
     LaunchedEffect(uiState.videoUri) {
         uiState.videoUri?.let { uri ->
             exoPlayer.setMediaItem(Media3Item.fromUri(uri))
@@ -55,8 +67,9 @@ fun VideoPlayerScreen(
         }
     }
 
+    // Auto-hide controls after 3 seconds
     LaunchedEffect(showControls) {
-        if (showControls) {
+        if (showControls && isPlaying) {
             delay(3000)
             showControls = false
         }
@@ -131,7 +144,7 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Center controls
+        // Center play/pause controls
         AnimatedVisibility(
             visible = showControls,
             enter = fadeIn(tween(200)),
@@ -155,7 +168,7 @@ fun VideoPlayerScreen(
                     modifier = Modifier.size(72.dp),
                 ) {
                     Icon(
-                        if (exoPlayer.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         "Play/Pause",
                         tint = Color.White,
                         modifier = Modifier.size(48.dp),
@@ -199,7 +212,7 @@ private fun VideoSeekBar(player: ExoPlayer, modifier: Modifier = Modifier) {
             progress = if (player.duration > 0) {
                 player.currentPosition.toFloat() / player.duration
             } else 0f
-            duration = player.duration
+            duration = player.duration.coerceAtLeast(0L)
             delay(500)
         }
     }
@@ -236,7 +249,9 @@ private fun VideoSeekBar(player: ExoPlayer, modifier: Modifier = Modifier) {
 
 private fun Long.toFormattedDuration(): String {
     val totalSec = this / 1000
-    val m = totalSec / 60
+    val h = totalSec / 3600
+    val m = (totalSec % 3600) / 60
     val s = totalSec % 60
-    return "$m:${"%02d".format(s)}"
+    return if (h > 0) "%d:%02d:%02d".format(h, m, s)
+    else "%d:%02d".format(m, s)
 }
