@@ -1,5 +1,6 @@
 package com.grow.gallery.feature.onboarding
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -15,10 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.invisibleToUser
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -44,7 +46,7 @@ private val pages = listOf(
         title = "Smart Gallery",
         description = "Your photos, beautifully organized.",
         features = listOf("Auto date grouping", "Fast photo search", "Videos & photos in one place"),
-        gradientStart = Color(0xFF0052CC),
+        gradientStart = Brand.Blue,
         gradientEnd = Color(0xFF0099FF),
     ),
     OnboardingPage(
@@ -74,20 +76,48 @@ fun OnboardingScreen(
     val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // Collect the navigate event emitted by the ViewModel after DataStore write completes.
+    // This ensures the flag is persisted before navigation removes this composable.
+    LaunchedEffect(Unit) {
+        viewModel.navigateToHome.collect { onFinish() }
+    }
+
+    // Back on page > 0 → go to previous page instead of exiting the app
+    BackHandler(enabled = pagerState.currentPage > 0) {
+        scope.launch {
+            pagerState.animateScrollToPage(
+                page = pagerState.currentPage - 1,
+                animationSpec = tween(400, easing = FastOutSlowInEasing),
+            )
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding(),
+    ) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
         ) { page ->
-            OnboardingPageContent(page = pages[page])
+            val isCurrentPage = page == pagerState.currentPage
+            OnboardingPageContent(
+                page = pages[page],
+                modifier = if (!isCurrentPage) {
+                    // Hide off-screen pages from the accessibility tree
+                    Modifier.semantics { invisibleToUser() }
+                } else Modifier,
+            )
         }
 
-        // Bottom controls
+        // Bottom controls — clear of the gesture nav bar
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(start = Spacing.xl, end = Spacing.xl, bottom = 52.dp),
+                .navigationBarsPadding()
+                .padding(start = Spacing.xl, end = Spacing.xl, bottom = Spacing.xxxl),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Page indicators
@@ -121,10 +151,7 @@ fun OnboardingScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(
-                        onClick = {
-                            scope.launch { viewModel.completeOnboarding() }
-                            onFinish()
-                        },
+                        onClick = { viewModel.completeOnboarding() },
                     ) {
                         Text(
                             "Skip",
@@ -134,8 +161,13 @@ fun OnboardingScreen(
                     }
                     Button(
                         onClick = {
-                            scope.launch {
-                                pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                            if (!pagerState.isScrollInProgress) {
+                                scope.launch {
+                                    pagerState.animateScrollToPage(
+                                        page = pagerState.currentPage + 1,
+                                        animationSpec = tween(400, easing = FastOutSlowInEasing),
+                                    )
+                                }
                             }
                         },
                         shape = ShapeButtonRound,
@@ -151,10 +183,7 @@ fun OnboardingScreen(
                 }
             } else {
                 Button(
-                    onClick = {
-                        scope.launch { viewModel.completeOnboarding() }
-                        onFinish()
-                    },
+                    onClick = { viewModel.completeOnboarding() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp),
@@ -176,9 +205,12 @@ fun OnboardingScreen(
 }
 
 @Composable
-private fun OnboardingPageContent(page: OnboardingPage) {
+private fun OnboardingPageContent(
+    page: OnboardingPage,
+    modifier: Modifier = Modifier,
+) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(listOf(page.gradientStart, page.gradientEnd))

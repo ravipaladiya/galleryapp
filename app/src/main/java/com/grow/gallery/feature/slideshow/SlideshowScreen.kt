@@ -25,6 +25,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun SlideshowScreen(
     albumId: Long,
+    mediaIds: List<Long> = emptyList(),
     onNavigateUp: () -> Unit,
     viewModel: SlideshowViewModel = hiltViewModel(),
 ) {
@@ -33,7 +34,7 @@ fun SlideshowScreen(
     var isPlaying by remember { mutableStateOf(true) }
     var showControls by remember { mutableStateOf(true) }
 
-    LaunchedEffect(albumId) { viewModel.loadSlideshow(albumId) }
+    LaunchedEffect(albumId, mediaIds) { viewModel.loadSlideshow(albumId, mediaIds) }
 
     LaunchedEffect(isPlaying, currentIndex, uiState.items.size) {
         if (isPlaying && uiState.items.isNotEmpty()) {
@@ -49,8 +50,6 @@ fun SlideshowScreen(
             .clickable { showControls = !showControls },
     ) {
         if (uiState.items.isNotEmpty()) {
-            val item = uiState.items[currentIndex]
-
             AnimatedContent(
                 targetState = currentIndex,
                 transitionSpec = {

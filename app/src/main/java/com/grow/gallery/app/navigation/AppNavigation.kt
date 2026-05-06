@@ -35,8 +35,16 @@ sealed class Screen(val route: String) {
     object Trash : Screen("trash")
     object Storage : Screen("storage")
     object Collage : Screen("collage")
-    object Slideshow : Screen("slideshow/{albumId}") {
-        fun createRoute(albumId: Long = -1L) = "slideshow/$albumId"
+    object Slideshow : Screen("slideshow/{albumId}/{mediaIds}") {
+        /**
+         * Navigate to a slideshow.
+         * @param albumId  Real album id (>0) or -1 for all-media.
+         * @param mediaIds Specific media ids to play (memory group). Empty list means use albumId.
+         */
+        fun createRoute(albumId: Long = -1L, mediaIds: List<Long> = emptyList()): String {
+            val encoded = if (mediaIds.isEmpty()) "" else mediaIds.joinToString(",")
+            return "slideshow/$albumId/${encoded.encode()}"
+        }
     }
     object MapView : Screen("map")
     object Backup : Screen("backup")
