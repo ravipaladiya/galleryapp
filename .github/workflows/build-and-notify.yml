@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # required to create the GitHub Release that hosts the APK
+  contents: write
 
 jobs:
   build-and-notify:
@@ -55,7 +55,6 @@ jobs:
           echo "path=$DEST"  >> "$GITHUB_OUTPUT"
           echo "name=$DEST"  >> "$GITHUB_OUTPUT"
           echo "size=$SIZE"  >> "$GITHUB_OUTPUT"
-          echo "Built $DEST ($SIZE)"
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
@@ -80,7 +79,7 @@ jobs:
           fail_on_unmatched_files: true
           prerelease: true
 
-      - name: Notify Slack
+      - name: Notify Slack (success)
         env:
           WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
           APK_NAME: ${{ steps.apk.outputs.name }}
@@ -94,63 +93,38 @@ jobs:
           RUN_NUMBER: ${{ github.run_number }}
         run: |
           if [ -z "$WEBHOOK" ]; then
-            echo "::warning::SLACK_WEBHOOK_URL secret is not set; skipping Slack notification."
-            exit 0
+            echo "::warning::SLACK_WEBHOOK_URL not set"; exit 0
           fi
           SHORT_SHA="${COMMIT_SHA:0:7}"
           PAYLOAD=$(jq -n \
-            --arg apk         "$APK_NAME" \
-            --arg size        "$APK_SIZE" \
-            --arg url         "$RELEASE_URL" \
-            --arg sha         "$SHORT_SHA" \
-            --arg msg         "$COMMIT_MSG" \
-            --arg actor       "$ACTOR" \
-            --arg branch      "$BRANCH" \
-            --arg repo        "$REPO" \
-            --arg run_number  "$RUN_NUMBER" \
+            --arg apk        "$APK_NAME" \
+            --arg size       "$APK_SIZE" \
+            --arg url        "$RELEASE_URL" \
+            --arg sha        "$SHORT_SHA" \
+            --arg msg        "$COMMIT_MSG" \
+            --arg actor      "$ACTOR" \
+            --arg branch     "$BRANCH" \
+            --arg repo       "$REPO" \
+            --arg run_number "$RUN_NUMBER" \
             '{
-              text: ":white_check_mark: GalleryApp build #\($run_number) ready",
+              text: (":white_check_mark: GalleryApp build #" + $run_number + " ready"),
               blocks: [
-                {
-                  type: "header",
-                  text: { type: "plain_text", text: ":white_check_mark: GalleryApp build #\($run_number) ready" }
-                },
-                {
-                  type: "section",
-                  fields: [
-                    { type: "mrkdwn", text: "*APK*\n\($apk) (\($size))" },
-                    { type: "mrkdwn", text: "*Branch*\n`\($branch)`" },
-                    { type: "mrkdwn", text: "*Commit*\n<https://github.com/\($repo)/commit/\($sha)|\($sha)>" },
-                    { type: "mrkdwn", text: "*Author*\n@\($actor)" }
-                  ]
-                },
-                {
-                  type: "section",
-                  text: { type: "mrkdwn", text: "*Message*\n\($msg)" }
-                },
-                {
-                  type: "actions",
-                  elements: [
-                    {
-                      type: "button",
-                      style: "primary",
-                      text: { type: "plain_text", text: "Download APK" },
-                      url: $url
-                    }
-                  ]
-                }
+                { type: "header", text: { type: "plain_text", text: (":white_check_mark: GalleryApp build #" + $run_number + " ready") } },
+                { type: "section", fields: [
+                    { type: "mrkdwn", text: ("*APK*\n" + $apk + " (" + $size + ")") },
+                    { type: "mrkdwn", text: ("*Branch*\n`" + $branch + "`") },
+                    { type: "mrkdwn", text: ("*Commit*\n<https://github.com/" + $repo + "/commit/" + $sha + "|" + $sha + ">") },
+                    { type: "mrkdwn", text: ("*Author*\n@" + $actor) }
+                ]},
+                { type: "section", text: { type: "mrkdwn", text: ("*Message*\n" + $msg) } },
+                { type: "actions", elements: [
+                    { type: "button", style: "primary", text: { type: "plain_text", text: "Download APK" }, url: $url }
+                ]}
               ]
             }')
-          HTTP=$(curl -sS -o /tmp/slack.out -w "%{http_code}" \
-                       -X POST -H 'Content-Type: application/json' \
-                       --data "$PAYLOAD" "$WEBHOOK")
-          echo "Slack responded HTTP $HTTP: $(cat /tmp/slack.out)"
-          if [ "$HTTP" != "200" ]; then
-            echo "::error::Slack webhook failed"
-            exit 1
-          fi
+          curl -sS -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "$WEBHOOK"
 
-      - name: Notify Slack on failure
+      - name: Notify Slack (failure)
         if: failure()
         env:
           WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -161,14 +135,52 @@ jobs:
         run: |
           if [ -z "$WEBHOOK" ]; then exit 0; fi
           SHORT_SHA="${COMMIT_SHA:0:7}"
-          curl -sS -X POST -H 'Content-Type: application/json' \
-               --data "$(jq -n \
-                  --arg repo   "$REPO" \
-                  --arg run_id "$RUN_ID" \
-                  --arg branch "$BRANCH" \
-                  --arg sha    "$SHORT_SHA" \
-                  '{
-                    text: ":x: GalleryApp build failed on \($branch) (\($sha)) — auto-fix attempting",
-                    blocks: [
-                      { type: "section", text: { type: "mrkdwn",
-                        text: ":x: *Gal
+          PAYLOAD=$(jq -n \
+            --arg repo   "$REPO" \
+            --arg run_id "$RUN_ID" \
+            --arg branch "$BRANCH" \
+            --arg sha    "$SHORT_SHA" \
+            '{
+              text: (":x: GalleryApp build failed on " + $branch + " (" + $sha + ") - auto-fix attempting"),
+              blocks: [
+                { type: "section", text: { type: "mrkdwn",
+                  text: (":x: *GalleryApp build failed* on `" + $branch + "` @ " + $sha + "\n<https://github.com/" + $repo + "/actions/runs/" + $run_id + "|View logs> - auto-fix job will attempt to patch and open a PR.") } }
+              ]
+            }')
+          curl -sS -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "$WEBHOOK" || true
+
+  auto-fix:
+    needs: build-and-notify
+    if: ${{ always() && needs.build-and-notify.result == 'failure' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download build log
+        uses: actions/download-artifact@v4
+        with:
+          name: build-log
+          path: /tmp/
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run auto-fix
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          REPO: ${{ github.repository }}
+          RUN_NUMBER: ${{ github.run_number }}
+          FAILED_SHA: ${{ github.sha }}
+          FAILED_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 .github/scripts/autofix.py
