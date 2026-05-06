@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -79,30 +78,12 @@ fun TrashScreen(
     ) { paddingValues ->
         when {
             uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
-            uiState.items.isEmpty() -> {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                        .padding(Spacing.xxxl),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.4f),
-                        modifier = Modifier.size(80.dp),
-                    )
-                    Spacer(Modifier.height(Spacing.xl))
-                    Text(
-                        "Recently Deleted is Empty",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
+            uiState.items.isEmpty() -> EmptyState(
+                icon = Icons.Default.Delete,
+                title = "Recently Deleted is Empty",
+                description = "Deleted photos and videos appear here for 30 days before being permanently removed.",
+                modifier = Modifier.padding(paddingValues),
+            )
             else -> {
                 Column(modifier = Modifier.padding(paddingValues)) {
                     Surface(

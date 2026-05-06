@@ -173,11 +173,11 @@ fun EditorScreen(
 
     uiState.error?.let { err ->
         AlertDialog(
-            onDismissRequest = { },
+            onDismissRequest = viewModel::clearError,
             title = { Text("Save Failed") },
             text = { Text(err) },
             confirmButton = {
-                Button(onClick = { }) { Text("OK") }
+                Button(onClick = viewModel::clearError) { Text("OK") }
             },
         )
     }

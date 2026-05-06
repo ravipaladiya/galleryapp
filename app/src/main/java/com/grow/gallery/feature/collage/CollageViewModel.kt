@@ -45,10 +45,14 @@ class CollageViewModel @Inject constructor(
         }
     }
 
-    fun toggleSelection(item: MediaItem) {
+    fun toggleSelection(item: MediaItem, maxSlots: Int) {
         _uiState.update { state ->
             val current = state.selectedItems.toMutableList()
-            if (current.contains(item)) current.remove(item) else current.add(item)
+            if (current.contains(item)) {
+                current.remove(item)
+            } else if (current.size < maxSlots) {
+                current.add(item)
+            }
             state.copy(selectedItems = current)
         }
     }

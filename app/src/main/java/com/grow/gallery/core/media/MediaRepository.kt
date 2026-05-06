@@ -358,6 +358,15 @@ class MediaRepository @Inject constructor(
         (images + videos).sortedByDescending { it.dateTaken ?: it.dateAdded }
     }
 
+    suspend fun loadMediaByIds(ids: Set<Long>): List<MediaItem> = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext emptyList()
+        val allImages = queryImages(MediaQuery())
+        val allVideos = queryVideos(MediaQuery())
+        (allImages + allVideos)
+            .filter { it.id in ids }
+            .sortedByDescending { it.dateTaken ?: it.dateAdded }
+    }
+
     data class StorageByType(
         val photoBytes: Long,
         val videoBytes: Long,

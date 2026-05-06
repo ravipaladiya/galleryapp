@@ -171,8 +171,8 @@ private fun SearchSuggestions(
     onClearRecents: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.padding(Spacing.lg)) {
-        if (recentSearches.isNotEmpty()) {
+    if (recentSearches.isNotEmpty()) {
+        Column(modifier = modifier) {
             SectionHeader(
                 title = "Recent Searches",
                 trailing = {
@@ -196,22 +196,35 @@ private fun SearchSuggestions(
                     modifier = Modifier.clickable { onQuerySelect(query) },
                 )
             }
-        } else {
-            Spacer(Modifier.height(Spacing.xxl))
+        }
+    } else {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(Spacing.xxxl),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
             Icon(
                 Icons.Default.Search,
                 null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.4f),
-                modifier = Modifier
-                    .size(64.dp)
-                    .align(Alignment.CenterHorizontally),
+                modifier = Modifier.size(72.dp),
             )
-            Spacer(Modifier.height(Spacing.lg))
+            Spacer(Modifier.height(Spacing.xl))
             Text(
-                "Search for photos by name, date, or album.",
+                "Search photos, albums, and dates",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            )
+            Spacer(Modifier.height(Spacing.sm))
+            Text(
+                "Find your memories by filename, album name, or date.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
     }

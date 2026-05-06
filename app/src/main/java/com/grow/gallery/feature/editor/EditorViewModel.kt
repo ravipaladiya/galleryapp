@@ -62,6 +62,7 @@ class EditorViewModel @Inject constructor(
     fun resetAdjustments() = _uiState.update { it.copy(brightness = 0f, contrast = 0f, saturation = 0f, sharpness = 0f) }
 
     fun onSavedHandled() = _uiState.update { it.copy(isSaved = false, savedUri = null) }
+    fun clearError() = _uiState.update { it.copy(error = null) }
 
     fun saveImage() {
         val uri = _uiState.value.imageUri ?: return

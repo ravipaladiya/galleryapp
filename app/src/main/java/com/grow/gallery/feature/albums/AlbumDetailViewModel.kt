@@ -2,6 +2,7 @@ package com.grow.gallery.feature.albums
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.grow.gallery.core.database.AlbumDao
 import com.grow.gallery.core.media.MediaItem
 import com.grow.gallery.core.media.MediaQuery
 import com.grow.gallery.core.media.MediaRepository
@@ -22,12 +23,13 @@ data class AlbumDetailUiState(
 @HiltViewModel
 class AlbumDetailViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
+    private val albumDao: AlbumDao,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AlbumDetailUiState())
     val uiState: StateFlow<AlbumDetailUiState> = _uiState.asStateFlow()
 
-    private var currentAlbumId: Long = -1L
+    private var currentAlbumId: Long = Long.MIN_VALUE
 
     fun loadAlbumMedia(albumId: Long) {
         currentAlbumId = albumId
@@ -43,13 +45,28 @@ class AlbumDetailViewModel @Inject constructor(
     fun dismissSortSheet() { _uiState.update { it.copy(showSortSheet = false) } }
 
     private fun reload() {
-        if (currentAlbumId < 0) return
+        if (currentAlbumId == Long.MIN_VALUE) return
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                val query = MediaQuery(albumId = currentAlbumId, sortOrder = _uiState.value.sortOrder)
-                val groups = mediaRepository.loadMedia(query)
-                val items = groups.flatMap { it.items }
+                val items = if (currentAlbumId < 0) {
+                    // Custom album — look up media IDs from the join table.
+                    // AlbumsViewModel stores custom album id as -custom.id so the real DB id is:
+                    val dbAlbumId = -currentAlbumId
+                    val mediaIds = albumDao.getMediaIdsForAlbum(dbAlbumId).toSet()
+                    val loaded = mediaRepository.loadMediaByIds(mediaIds)
+                    when (_uiState.value.sortOrder) {
+                        SortOrder.NEWEST -> loaded.sortedByDescending { it.dateTaken ?: it.dateAdded }
+                        SortOrder.OLDEST -> loaded.sortedBy { it.dateTaken ?: it.dateAdded }
+                        SortOrder.SIZE_DESC -> loaded.sortedByDescending { it.size }
+                        SortOrder.SIZE_ASC -> loaded.sortedBy { it.size }
+                    }
+                } else {
+                    // System album — query by MediaStore bucket ID.
+                    val query = MediaQuery(albumId = currentAlbumId, sortOrder = _uiState.value.sortOrder)
+                    val groups = mediaRepository.loadMedia(query)
+                    groups.flatMap { it.items }
+                }
                 _uiState.update { it.copy(items = items, isLoading = false) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
