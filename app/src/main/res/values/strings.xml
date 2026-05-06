@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gallery</string>
+
+    <!-- Navigation -->
+    <string name="nav_photos">Photos</string>
+    <string name="nav_albums">Albums</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_memories">Memories</string>
+
+    <!-- Permissions -->
+    <string name="permission_title">Access Your Photos</string>
+    <string name="permission_desc">Gallery needs permission to show your photos and videos.</string>
+    <string name="permission_grant">Grant Permission</string>
+    <string name="permission_denied_title">Permission Denied</string>
+    <string name="permission_denied_desc">Without storage permission, Gallery cannot show your media. Please grant permission in Settings.</string>
+    <string name="permission_open_settings">Open Settings</string>
+    <string name="permission_partial_title">Limited Access</string>
+    <string name="permission_partial_desc">You\'ve granted access to selected photos only. Some features may be limited.</string>
+    <string name="permission_manage_selected">Manage Selected Photos</string>
+
+    <!-- Home -->
+    <string name="home_title">Photos</string>
+    <string name="today">Today</string>
+    <string name="yesterday">Yesterday</string>
+    <string name="no_media_title">No Photos Yet</string>
+    <string name="no_media_desc">Photos and videos from your device will appear here.</string>
+    <string name="loading">Loading…</string>
+
+    <!-- Albums -->
+    <string name="albums_title">Albums</string>
+    <string name="create_album">Create Album</string>
+    <string name="album_name_hint">Album name</string>
+    <string name="items_count">%d items</string>
+    <string name="no_albums_title">No Albums</string>
+    <string name="no_albums_desc">Create an album to organize your photos.</string>
+
+    <!-- Viewer -->
+    <string name="viewer_title">Photo</string>
+    <string name="delete">Delete</string>
+    <string name="share">Share</string>
+    <string name="favorite">Favorite</string>
+    <string name="info">Info</string>
+    <string name="edit">Edit</string>
+    <string name="set_as">Set as…</string>
+    <string name="set_as_wallpaper">Set as Wallpaper</string>
+    <string name="set_as_contact">Set as Contact Photo</string>
+    <string name="move_to_album">Move to Album</string>
+    <string name="copy_to_album">Copy to Album</string>
+
+    <!-- Photo Info -->
+    <string name="photo_info">Photo Info</string>
+    <string name="file_name">File Name</string>
+    <string name="file_path">Path</string>
+    <string name="file_size">Size</string>
+    <string name="resolution">Resolution</string>
+    <string name="date_taken">Date Taken</string>
+    <string name="duration">Duration</string>
+    <string name="mime_type">Type</string>
+
+    <!-- Search -->
+    <string name="search_title">Search</string>
+    <string name="search_hint">Search photos, albums, dates…</string>
+    <string name="search_empty_title">No Results</string>
+    <string name="search_empty_desc">Try different keywords or filters.</string>
+    <string name="filter_all">All</string>
+    <string name="filter_photos">Photos</string>
+    <string name="filter_videos">Videos</string>
+    <string name="filter_favorites">Favorites</string>
+
+    <!-- Memories -->
+    <string name="memories_title">Memories</string>
+    <string name="on_this_day">On This Day</string>
+    <string name="best_of">Best of %s</string>
+
+    <!-- Vault -->
+    <string name="vault_title">Secure Vault</string>
+    <string name="vault_locked_desc">Your private photos are locked.</string>
+    <string name="vault_enter_pin">Enter PIN</string>
+    <string name="vault_setup_pin">Set Up PIN</string>
+    <string name="vault_confirm_pin">Confirm PIN</string>
+    <string name="vault_biometric">Use Biometric</string>
+    <string name="vault_wrong_pin">Incorrect PIN. Try again.</string>
+    <string name="vault_pin_mismatch">PINs do not match. Try again.</string>
+    <string name="vault_unlock_biometric">Unlock with biometric</string>
+    <string name="vault_add_to">Add to Vault</string>
+    <string name="vault_remove">Remove from Vault</string>
+    <string name="vault_empty_title">Vault is Empty</string>
+    <string name="vault_empty_desc">Add private photos and videos to keep them secure.</string>
+
+    <!-- Cleaner -->
+    <string name="cleaner_title">Smart Cleaner</string>
+    <string name="cleaner_desc">Free up space by removing duplicate and similar photos.</string>
+    <string name="cleaner_start">Start Scanning</string>
+    <string name="cleaner_scanning">Scanning…</string>
+    <string name="cleaner_similar">Similar Photos</string>
+    <string name="cleaner_duplicates">Duplicates</string>
+    <string name="cleaner_screenshots">Screenshots</string>
+    <string name="cleaner_free_up">Free up %s</string>
+    <string name="cleaner_clean_all">Clean All</string>
+    <string name="cleaner_no_junk">Your gallery is clean!</string>
+    <string name="cleaner_result_title">Cleaning Complete</string>
+    <string name="cleaner_deleted_count">%d items deleted</string>
+    <string name="cleaner_space_freed">%s freed</string>
+
+    <!-- Premium -->
+    <string name="premium_title">Gallery Premium</string>
+    <string name="premium_subtitle">Unlock all features</string>
+    <string name="premium_yearly">Yearly</string>
+    <string name="premium_monthly">Monthly</string>
+    <string name="premium_lifetime">Lifetime</string>
+    <string name="premium_best_value">Best Value</string>
+    <string name="premium_subscribe">Subscribe</string>
+    <string name="premium_restore">Restore Purchase</string>
+    <string name="premium_terms">Terms of Service</string>
+    <string name="premium_privacy">Privacy Policy</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_general">General</string>
+    <string name="settings_dark_mode">Dark Mode</string>
+    <string name="settings_dark_mode_auto">Auto (System)</string>
+    <string name="settings_dark_mode_on">Always On</string>
+    <string name="settings_dark_mode_off">Always Off</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_grid_size">Grid Size</string>
+    <string name="settings_privacy">Privacy</string>
+    <string name="settings_app_lock">App Lock</string>
+    <string name="settings_hide_screenshots">Hide Screenshots from Albums</string>
+    <string name="settings_storage">Storage</string>
+    <string name="settings_backup">Backup &amp; Sync</string>
+    <string name="settings_manage_permissions">Manage Permissions</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version</string>
+    <string name="settings_rate_app">Rate App</string>
+    <string name="settings_feedback">Send Feedback</string>
+
+    <!-- Sort & Filter -->
+    <string name="sort_filter">Sort &amp; Filter</string>
+    <string name="sort_by">Sort by</string>
+    <string name="sort_newest">Newest First</string>
+    <string name="sort_oldest">Oldest First</string>
+    <string name="sort_size_large">Size: Large First</string>
+    <string name="sort_size_small">Size: Small First</string>
+    <string name="filter_by">Filter by</string>
+    <string name="apply">Apply</string>
+    <string name="reset">Reset</string>
+
+    <!-- Dialogs -->
+    <string name="confirm_delete">Delete Photo?</string>
+    <string name="confirm_delete_plural">Delete %d Photos?</string>
+    <string name="confirm_delete_desc">This photo will be moved to Recently Deleted.</string>
+    <string name="confirm_delete_plural_desc">These photos will be moved to Recently Deleted.</string>
+    <string name="cancel">Cancel</string>
+    <string name="confirm">Confirm</string>
+    <string name="rename">Rename</string>
+    <string name="rename_file">Rename File</string>
+    <string name="file_name_label">File name</string>
+    <string name="ok">OK</string>
+    <string name="done">Done</string>
+    <string name="select_all">Select All</string>
+    <string name="deselect_all">Deselect All</string>
+
+    <!-- Trash -->
+    <string name="trash_title">Recently Deleted</string>
+    <string name="trash_desc">Items are permanently deleted after 30 days.</string>
+    <string name="trash_restore">Restore</string>
+    <string name="trash_delete_permanently">Delete Permanently</string>
+    <string name="trash_empty">Recently Deleted is Empty</string>
+    <string name="trash_empty_forever">Empty Trash</string>
+    <string name="days_left">%d days left</string>
+
+    <!-- Video -->
+    <string name="video_title">Video</string>
+    <string name="trim_video">Trim Video</string>
+    <string name="start_trim">Start</string>
+    <string name="end_trim">End</string>
+    <string name="export_video">Export</string>
+    <string name="mute">Mute</string>
+    <string name="unmute">Unmute</string>
+    <string name="fullscreen">Full Screen</string>
+
+    <!-- Slideshow -->
+    <string name="slideshow_title">Slideshow</string>
+    <string name="slideshow_speed">Transition Speed</string>
+    <string name="slideshow_transition">Transition Effect</string>
+    <string name="slideshow_repeat">Repeat</string>
+    <string name="slideshow_start">Start Slideshow</string>
+
+    <!-- Collage -->
+    <string name="collage_title">Collage Maker</string>
+    <string name="collage_layout">Layout</string>
+    <string name="collage_save">Save Collage</string>
+    <string name="collage_share_collage">Share Collage</string>
+
+    <!-- Storage -->
+    <string name="storage_title">Storage Manager</string>
+    <string name="storage_used">Used</string>
+    <string name="storage_free">Free</string>
+    <string name="storage_total">Total</string>
+    <string name="storage_photos">Photos</string>
+    <string name="storage_videos">Videos</string>
+    <string name="storage_other">Other</string>
+
+    <!-- Map -->
+    <string name="map_title">Map View</string>
+    <string name="map_no_location">No location data found</string>
+    <string name="map_permission_needed">Location permission needed to show photos on map</string>
+
+    <!-- Backup -->
+    <string name="backup_title">Backup &amp; Sync</string>
+    <string name="backup_on">Backup On</string>
+    <string name="backup_off">Backup Off</string>
+    <string name="backup_last_synced">Last synced: %s</string>
+    <string name="backup_syncing">Syncing…</string>
+    <string name="backup_wifi_only">Backup over Wi-Fi only</string>
+    <string name="backup_account">Account</string>
+    <string name="backup_start">Start Backup</string>
+
+    <!-- AI Editor -->
+    <string name="editor_title">AI Editor</string>
+    <string name="editor_enhance">Auto Enhance</string>
+    <string name="editor_remove_bg">Remove Background</string>
+    <string name="editor_colorize">Colorize</string>
+    <string name="editor_upscale">Upscale</string>
+    <string name="editor_crop">Crop</string>
+    <string name="editor_filter">Filter</string>
+    <string name="editor_adjust">Adjust</string>
+    <string name="editor_save">Save</string>
+    <string name="editor_save_copy">Save Copy</string>
+
+    <!-- Multi-select -->
+    <string name="selected_count">%d selected</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_skip">Skip</string>
+    <string name="onboarding_next">Next</string>
+    <string name="onboarding_get_started">Get Started</string>
+    <string name="onboarding_title_1">Smart Gallery</string>
+    <string name="onboarding_desc_1">AI-powered gallery that understands your photos and memories.</string>
+    <string name="onboarding_title_2">Organize Effortlessly</string>
+    <string name="onboarding_desc_2">Auto-albums, face groups, and location-based collections.</string>
+    <string name="onboarding_title_3">Secure &amp; Private</string>
+    <string name="onboarding_desc_3">Lock your private photos in an encrypted vault.</string>
+
+    <!-- App Lock -->
+    <string name="app_lock_title">App Lock</string>
+    <string name="app_lock_enable">Enable App Lock</string>
+    <string name="app_lock_biometric">Use Biometric</string>
+    <string name="app_lock_change_pin">Change PIN</string>
+
+    <!-- Errors -->
+    <string name="error_generic">Something went wrong. Please try again.</string>
+    <string name="error_loading">Failed to load media.</string>
+    <string name="error_delete">Failed to delete item.</string>
+    <string name="error_move">Failed to move item.</string>
+    <string name="error_share">Failed to share item.</string>
+    <string name="retry">Retry</string>
+</resources>
