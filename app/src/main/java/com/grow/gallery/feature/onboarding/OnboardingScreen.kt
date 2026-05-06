@@ -87,7 +87,7 @@ fun OnboardingScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(horizontal = Spacing.xl, bottom = 52.dp),
+                .padding(start = Spacing.xl, end = Spacing.xl, bottom = 52.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Page indicators

@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppLockScreen(onNavigateUp: () -> Unit) {
     var appLockEnabled by remember { mutableStateOf(false) }

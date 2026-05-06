@@ -29,6 +29,7 @@ import com.grow.gallery.core.media.MediaItem
 
 data class CollageLayout(val id: String, val label: String, val columns: Int, val rows: Int)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollageScreen(
     onNavigateUp: () -> Unit,

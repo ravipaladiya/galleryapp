@@ -26,6 +26,7 @@ import com.grow.gallery.core.billing.PremiumPlan
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.GalleryTopBar
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PremiumScreen(
     onNavigateUp: () -> Unit,

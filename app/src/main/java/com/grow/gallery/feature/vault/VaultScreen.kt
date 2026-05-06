@@ -2,6 +2,7 @@ package com.grow.gallery.feature.vault
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.foundation.shape.CircleShape
@@ -101,7 +102,7 @@ private fun VaultSetupScreen(viewModel: VaultViewModel) {
                             confirmPin += digit
                             if (confirmPin.length == 4) {
                                 if (pin == confirmPin) {
-                                    kotlinx.coroutines.MainScope().launch {
+                                    scope.launch {
                                         viewModel.setupPin(pin)
                                     }
                                 } else {
@@ -195,6 +196,7 @@ private fun VaultLockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> Uni
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VaultUnlockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> Unit) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
