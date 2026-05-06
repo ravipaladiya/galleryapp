@@ -2,7 +2,6 @@ package com.grow.gallery.feature.storage
 
 import android.os.Environment
 import android.os.StatFs
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,17 +13,23 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StorageScreen(onNavigateUp: () -> Unit) {
+fun StorageScreen(
+    onNavigateUp: () -> Unit,
+    onOpenCleaner: () -> Unit,
+    onOpenTrash: () -> Unit,
+    viewModel: StorageViewModel = hiltViewModel(),
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val stat = remember { StatFs(Environment.getExternalStorageDirectory().path) }
     val totalBytes = remember { stat.totalBytes }
     val freeBytes = remember { stat.availableBytes }
@@ -40,7 +45,6 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
             ),
         ) {
             item {
-                // Storage donut chart card
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -57,10 +61,7 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
                             fontWeight = FontWeight.Bold,
                         )
                         Spacer(Modifier.height(Spacing.xl))
-                        StorageProgressBar(
-                            usedBytes = usedBytes,
-                            totalBytes = totalBytes,
-                        )
+                        StorageProgressBar(usedBytes = usedBytes, totalBytes = totalBytes)
                         Spacer(Modifier.height(Spacing.xl))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -79,7 +80,7 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
                 StorageTypeRow(
                     icon = Icons.Default.Photo,
                     label = "Photos",
-                    size = "Calculating…",
+                    size = uiState.photoSize,
                     color = Brand.Blue,
                 )
             }
@@ -87,16 +88,8 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
                 StorageTypeRow(
                     icon = Icons.Default.VideoFile,
                     label = "Videos",
-                    size = "Calculating…",
+                    size = uiState.videoSize,
                     color = Color(0xFF7C3AED),
-                )
-            }
-            item {
-                StorageTypeRow(
-                    icon = Icons.Default.FolderOpen,
-                    label = "Other Files",
-                    size = "Calculating…",
-                    color = Color(0xFFD97706),
                 )
             }
 
@@ -107,7 +100,7 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
                     subtitle = "Find and remove junk files",
                     leading = { Icon(Icons.Default.CleaningServices, null) },
                     trailing = { Icon(Icons.Default.ChevronRight, null) },
-                    onClick = { /* Navigate to cleaner */ },
+                    onClick = onOpenCleaner,
                 )
             }
             item {
@@ -116,7 +109,7 @@ fun StorageScreen(onNavigateUp: () -> Unit) {
                     subtitle = "Permanently delete trashed items",
                     leading = { Icon(Icons.Default.Delete, null) },
                     trailing = { Icon(Icons.Default.ChevronRight, null) },
-                    onClick = { /* Navigate to trash */ },
+                    onClick = onOpenTrash,
                 )
             }
         }

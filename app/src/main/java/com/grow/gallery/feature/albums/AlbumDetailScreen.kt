@@ -1,5 +1,6 @@
 package com.grow.gallery.feature.albums
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material.icons.Icons
@@ -13,6 +14,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
+import com.grow.gallery.core.media.SortOrder
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,11 +22,13 @@ fun AlbumDetailScreen(
     albumId: Long,
     albumName: String,
     onOpenViewer: (Long, Boolean) -> Unit,
+    onOpenSlideshow: (Long) -> Unit,
     onNavigateUp: () -> Unit,
     viewModel: AlbumDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var showSortSheet by remember { mutableStateOf(false) }
 
     LaunchedEffect(albumId) { viewModel.loadAlbumMedia(albumId) }
 
@@ -38,10 +42,10 @@ fun AlbumDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /* slideshow */ }) {
+                    IconButton(onClick = { onOpenSlideshow(albumId) }) {
                         Icon(Icons.Default.PlayCircle, "Slideshow")
                     }
-                    IconButton(onClick = { /* sort */ }) {
+                    IconButton(onClick = { showSortSheet = true }) {
                         Icon(Icons.Default.FilterList, "Sort")
                     }
                 },
@@ -73,10 +77,7 @@ fun AlbumDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                 ) {
-                    items(
-                        items = uiState.items,
-                        key = { it.id },
-                    ) { item ->
+                    items(items = uiState.items, key = { it.id }) { item ->
                         MediaGridItem(
                             item = item,
                             isSelected = false,
@@ -86,6 +87,53 @@ fun AlbumDetailScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+
+    if (showSortSheet) {
+        SortBottomSheet(
+            currentOrder = uiState.sortOrder,
+            onSelect = { order ->
+                viewModel.setSortOrder(order)
+                showSortSheet = false
+            },
+            onDismiss = { showSortSheet = false },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SortBottomSheet(
+    currentOrder: SortOrder,
+    onSelect: (SortOrder) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = listOf(
+        SortOrder.NEWEST to "Newest First",
+        SortOrder.OLDEST to "Oldest First",
+        SortOrder.SIZE_DESC to "Largest First",
+        SortOrder.SIZE_ASC to "Smallest First",
+    )
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(modifier = Modifier.padding(bottom = 32.dp)) {
+            Text(
+                "Sort By",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.md),
+            )
+            options.forEach { (order, label) ->
+                ListItem(
+                    headlineContent = { Text(label) },
+                    trailingContent = {
+                        if (currentOrder == order) {
+                            Icon(Icons.Default.Check, null, tint = Brand.Blue)
+                        }
+                    },
+                    modifier = Modifier.clickable { onSelect(order) },
+                )
             }
         }
     }

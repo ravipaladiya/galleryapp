@@ -358,6 +358,58 @@ class MediaRepository @Inject constructor(
         (images + videos).sortedByDescending { it.dateTaken ?: it.dateAdded }
     }
 
+    data class StorageByType(
+        val photoBytes: Long,
+        val videoBytes: Long,
+    )
+
+    suspend fun computeStorageByType(): StorageByType = withContext(Dispatchers.IO) {
+        val images = queryImages(MediaQuery())
+        val videos = queryVideos(MediaQuery())
+        StorageByType(
+            photoBytes = images.sumOf { it.size },
+            videoBytes = videos.sumOf { it.size },
+        )
+    }
+
+    data class CleanerCategories(
+        val screenshots: List<MediaItem>,
+        val burstPhotos: List<MediaItem>,
+        val largeMedia: List<MediaItem>,
+    )
+
+    suspend fun getCleanerCategories(): CleanerCategories = withContext(Dispatchers.IO) {
+        val allImages = queryImages(MediaQuery())
+        val allVideos = queryVideos(MediaQuery())
+        val allItems = allImages + allVideos
+
+        val screenshots = allItems.filter {
+            it.displayName.lowercase().contains("screenshot") ||
+                    it.bucketName.lowercase().contains("screenshot")
+        }
+
+        // Detect burst/duplicate shots: same bucket, within 3 seconds of another photo
+        val bursts = mutableListOf<MediaItem>()
+        val sortedImages = allImages.sortedBy { it.dateTaken ?: it.dateAdded }
+        for (i in 1 until sortedImages.size) {
+            val prev = sortedImages[i - 1]
+            val curr = sortedImages[i]
+            val prevTs = prev.dateTaken ?: prev.dateAdded
+            val currTs = curr.dateTaken ?: curr.dateAdded
+            if (curr.bucketId == prev.bucketId && (currTs - prevTs).let { it in 0..3 }) {
+                if (!bursts.contains(curr)) bursts.add(curr)
+            }
+        }
+
+        val largeMedia = allItems.filter { it.size > 50_000_000L }
+
+        CleanerCategories(
+            screenshots = screenshots,
+            burstPhotos = bursts,
+            largeMedia = largeMedia,
+        )
+    }
+
     private fun buildSelection(query: MediaQuery, isVideo: Boolean): String? {
         val parts = mutableListOf<String>()
         if (query.albumId != null) {

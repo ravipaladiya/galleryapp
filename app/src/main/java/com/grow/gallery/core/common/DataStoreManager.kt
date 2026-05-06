@@ -30,6 +30,8 @@ class DataStoreManager @Inject constructor(
         private val KEY_SLIDESHOW_SPEED = intPreferencesKey("slideshow_speed")
         private val KEY_SLIDESHOW_TRANSITION = stringPreferencesKey("slideshow_transition")
         private val KEY_BACKUP_WIFI_ONLY = booleanPreferencesKey("backup_wifi_only")
+        private val KEY_BACKUP_ENABLED = booleanPreferencesKey("backup_enabled")
+        private val KEY_APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled_settings")
     }
 
     val appTheme: Flow<AppTheme> = dataStore.data.map { prefs ->
@@ -48,6 +50,8 @@ class DataStoreManager @Inject constructor(
     val hideScreenshots: Flow<Boolean> = dataStore.data.map { it[KEY_HIDE_SCREENSHOTS] ?: false }
     val slideshowSpeed: Flow<Int> = dataStore.data.map { it[KEY_SLIDESHOW_SPEED] ?: 3 }
     val backupWifiOnly: Flow<Boolean> = dataStore.data.map { it[KEY_BACKUP_WIFI_ONLY] ?: true }
+    val backupEnabled: Flow<Boolean> = dataStore.data.map { it[KEY_BACKUP_ENABLED] ?: false }
+    val appLockEnabled: Flow<Boolean> = dataStore.data.map { it[KEY_APP_LOCK_ENABLED] ?: false }
 
     suspend fun setTheme(theme: AppTheme) {
         dataStore.edit { it[KEY_THEME] = theme.name }
@@ -75,5 +79,13 @@ class DataStoreManager @Inject constructor(
 
     suspend fun setBackupWifiOnly(wifiOnly: Boolean) {
         dataStore.edit { it[KEY_BACKUP_WIFI_ONLY] = wifiOnly }
+    }
+
+    suspend fun setBackupEnabled(enabled: Boolean) {
+        dataStore.edit { it[KEY_BACKUP_ENABLED] = enabled }
+    }
+
+    suspend fun setAppLockEnabled(enabled: Boolean) {
+        dataStore.edit { it[KEY_APP_LOCK_ENABLED] = enabled }
     }
 }

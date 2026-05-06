@@ -152,7 +152,7 @@ fun SettingsScreen(
                     title = "Rate App",
                     leading = { Icon(Icons.Default.Star, null) },
                     trailing = { Icon(Icons.Default.OpenInNew, null) },
-                    onClick = { /* open play store */ },
+                    onClick = viewModel::rateApp,
                 )
             }
             item {
@@ -160,7 +160,7 @@ fun SettingsScreen(
                     title = "Send Feedback",
                     leading = { Icon(Icons.Default.Feedback, null) },
                     trailing = { Icon(Icons.Default.OpenInNew, null) },
-                    onClick = { /* open feedback */ },
+                    onClick = viewModel::sendFeedback,
                 )
             }
         }
