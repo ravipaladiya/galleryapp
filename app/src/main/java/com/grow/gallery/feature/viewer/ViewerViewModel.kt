@@ -1,5 +1,7 @@
 package com.grow.gallery.feature.viewer
 
+import android.app.PendingIntent
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.grow.gallery.core.media.MediaItem
@@ -15,6 +17,9 @@ data class ViewerUiState(
     val currentIndex: Int = 0,
     val isLoading: Boolean = true,
     val error: String? = null,
+    /** Non-null on Android R+ while waiting for the system delete confirmation dialog. */
+    val pendingDeleteIntent: PendingIntent? = null,
+    val pendingDeleteItem: MediaItem? = null,
 ) {
     val currentItem: MediaItem? get() = items.getOrNull(currentIndex)
     val totalCount: Int get() = items.size
@@ -35,11 +40,8 @@ class ViewerViewModel @Inject constructor(
                 val groups = mediaRepository.loadMedia(MediaQuery())
                 val allItems = groups.flatMap { it.items }
                 val index = allItems.indexOfFirst { it.id == mediaId }.coerceAtLeast(0)
-                _uiState.update {
-                    it.copy(items = allItems, currentIndex = index, isLoading = false)
-                }
+                _uiState.update { it.copy(items = allItems, currentIndex = index, isLoading = false) }
             } catch (e: Exception) {
-                // Fallback: load single item
                 val single = mediaRepository.getMediaById(mediaId, isVideo)
                 _uiState.update {
                     it.copy(
@@ -75,12 +77,41 @@ class ViewerViewModel @Inject constructor(
 
     fun deleteItem(item: MediaItem) {
         viewModelScope.launch {
-            mediaRepository.deleteMedia(listOf(item))
-            _uiState.update { state ->
-                val newItems = state.items.filter { it.id != item.id }
-                val newIndex = minOf(state.currentIndex, (newItems.size - 1).coerceAtLeast(0))
-                state.copy(items = newItems, currentIndex = newIndex)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val pendingIntent = try {
+                    mediaRepository.prepareDelete(listOf(item))
+                } catch (e: Exception) {
+                    return@launch
+                }
+                _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = item) }
+            } else {
+                mediaRepository.deleteMedia(listOf(item))
+                removeItemFromList(item)
             }
+        }
+    }
+
+    /** Called by the screen immediately after launching the intent sender. */
+    fun onDeleteIntentConsumed() {
+        _uiState.update { it.copy(pendingDeleteIntent = null) }
+    }
+
+    /** Called after the system delete confirmation dialog returns. */
+    fun onDeleteResult(confirmed: Boolean): Boolean {
+        val item = _uiState.value.pendingDeleteItem
+        _uiState.update { it.copy(pendingDeleteItem = null) }
+        if (confirmed && item != null) {
+            removeItemFromList(item)
+            return _uiState.value.items.isEmpty()
+        }
+        return false
+    }
+
+    private fun removeItemFromList(item: MediaItem) {
+        _uiState.update { state ->
+            val newItems = state.items.filter { it.id != item.id }
+            val newIndex = minOf(state.currentIndex, (newItems.size - 1).coerceAtLeast(0))
+            state.copy(items = newItems, currentIndex = newIndex)
         }
     }
 }

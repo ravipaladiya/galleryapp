@@ -1,12 +1,16 @@
 package com.grow.gallery.feature.home
 
+import android.app.PendingIntent
 import android.net.Uri
+import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.grow.gallery.core.media.*
 import com.grow.gallery.core.permissions.MediaPermissionState
 import com.grow.gallery.core.permissions.PermissionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -24,8 +28,13 @@ data class HomeUiState(
     val shareUris: List<Uri>? = null,
     val showDeleteConfirm: Boolean = false,
     val snackbarMessage: String? = null,
+    /** Non-null on Android R+ while waiting for the system delete confirmation dialog. */
+    val pendingDeleteIntent: PendingIntent? = null,
+    /** Items queued for deletion — preserved across the async R+ confirmation flow. */
+    val pendingDeleteItems: List<MediaItem> = emptyList(),
 )
 
+@OptIn(FlowPreview::class)
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val mediaRepository: MediaRepository,
@@ -38,8 +47,21 @@ class HomeViewModel @Inject constructor(
     private val _sortOrder = MutableStateFlow(SortOrder.NEWEST)
     private val _filter = MutableStateFlow(MediaFilter.ALL)
 
+    private var loadJob: Job? = null
+
     init {
+        observeExternalMediaChanges()
         loadMedia()
+    }
+
+    private fun observeExternalMediaChanges() {
+        viewModelScope.launch {
+            mediaRepository.observeMediaChanges()
+                .debounce(600)
+                .collect {
+                    if (permissionManager.hasAnyAccess()) loadMedia()
+                }
+        }
     }
 
     fun onPermissionResult() {
@@ -48,7 +70,8 @@ class HomeViewModel @Inject constructor(
     }
 
     fun loadMedia() {
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             val permState = permissionManager.checkCurrentState()
             _uiState.update { it.copy(permissionState = permState, isLoading = true, error = null) }
 
@@ -104,10 +127,7 @@ class HomeViewModel @Inject constructor(
 
     fun enterSelectionMode(mediaId: Long) {
         _uiState.update { state ->
-            state.copy(
-                selectedItems = setOf(mediaId),
-                isSelectionMode = true,
-            )
+            state.copy(selectedItems = setOf(mediaId), isSelectionMode = true)
         }
     }
 
@@ -116,10 +136,7 @@ class HomeViewModel @Inject constructor(
     }
 
     fun selectAll() {
-        val allIds = _uiState.value.mediaGroups
-            .flatMap { it.items }
-            .map { it.id }
-            .toSet()
+        val allIds = _uiState.value.mediaGroups.flatMap { it.items }.map { it.id }.toSet()
         _uiState.update { it.copy(selectedItems = allIds) }
     }
 
@@ -152,14 +169,45 @@ class HomeViewModel @Inject constructor(
 
         viewModelScope.launch {
             _uiState.update { it.copy(showDeleteConfirm = false) }
-            val result = mediaRepository.deleteMedia(items)
-            if (result.isSuccess) {
-                exitSelectionMode()
-                loadMedia()
-                _uiState.update { it.copy(snackbarMessage = "${items.size} item(s) deleted") }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // On Android 11+, the system must show a confirmation dialog.
+                val pendingIntent = try {
+                    mediaRepository.prepareDelete(items)
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(snackbarMessage = "Delete failed: ${e.message}") }
+                    return@launch
+                }
+                _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItems = items) }
             } else {
-                _uiState.update { it.copy(snackbarMessage = "Delete failed: ${result.exceptionOrNull()?.message}") }
+                // Pre-Android 11: delete directly.
+                val result = mediaRepository.deleteMedia(items)
+                if (result.isSuccess) {
+                    exitSelectionMode()
+                    loadMedia()
+                    _uiState.update { it.copy(snackbarMessage = "${items.size} item(s) deleted") }
+                } else {
+                    _uiState.update {
+                        it.copy(snackbarMessage = "Delete failed: ${result.exceptionOrNull()?.message}")
+                    }
+                }
             }
+        }
+    }
+
+    /** Called by the Screen immediately after it has launched the intent sender. */
+    fun onDeleteIntentConsumed() {
+        _uiState.update { it.copy(pendingDeleteIntent = null) }
+    }
+
+    /** Called after the system delete confirmation dialog returns. */
+    fun onDeleteResult(confirmed: Boolean) {
+        val count = _uiState.value.pendingDeleteItems.size
+        _uiState.update { it.copy(pendingDeleteItems = emptyList()) }
+        if (confirmed) {
+            exitSelectionMode()
+            loadMedia()
+            _uiState.update { it.copy(snackbarMessage = "$count item(s) deleted") }
         }
     }
 
@@ -171,9 +219,7 @@ class HomeViewModel @Inject constructor(
 
         viewModelScope.launch {
             val allFavorited = items.all { it.isFavorite }
-            items.forEach { item ->
-                mediaRepository.setFavorite(item, !allFavorited)
-            }
+            items.forEach { mediaRepository.setFavorite(it, !allFavorited) }
             exitSelectionMode()
             loadMedia()
             val action = if (allFavorited) "removed from" else "added to"

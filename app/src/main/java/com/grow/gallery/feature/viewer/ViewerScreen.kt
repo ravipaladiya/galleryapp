@@ -1,5 +1,9 @@
 package com.grow.gallery.feature.viewer
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
@@ -52,17 +56,32 @@ fun ViewerScreen(
 
     LaunchedEffect(mediaId) { viewModel.loadMedia(mediaId, isVideo) }
 
+    // System delete confirmation launcher (Android R+)
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        val empty = viewModel.onDeleteResult(result.resultCode == Activity.RESULT_OK)
+        if (empty) onNavigateUp()
+    }
+
+    LaunchedEffect(uiState.pendingDeleteIntent) {
+        uiState.pendingDeleteIntent?.let { pendingIntent ->
+            viewModel.onDeleteIntentConsumed()
+            deleteLauncher.launch(
+                IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+            )
+        }
+    }
+
     val pagerState = rememberPagerState(
         initialPage = uiState.currentIndex,
         pageCount = { uiState.items.size.coerceAtLeast(1) },
     )
 
-    // Sync pager page changes back to the ViewModel
     LaunchedEffect(pagerState.settledPage) {
         viewModel.setCurrentIndex(pagerState.settledPage)
     }
 
-    // When the initial index is ready after loading, jump to it without animation
     LaunchedEffect(uiState.isLoading, uiState.currentIndex) {
         if (!uiState.isLoading && pagerState.currentPage != uiState.currentIndex) {
             pagerState.scrollToPage(uiState.currentIndex)
@@ -96,6 +115,7 @@ fun ViewerScreen(
                     } else {
                         ZoomableImage(
                             item = item,
+                            pageIndex = page,
                             onTap = { showControls = !showControls },
                             modifier = Modifier.fillMaxSize(),
                         )
@@ -127,9 +147,7 @@ fun ViewerScreen(
                     IconButton(onClick = onNavigateUp) {
                         Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
                     }
-                    Column(
-                        modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm),
-                    ) {
+                    Column(modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm)) {
                         uiState.currentItem?.let { item ->
                             Text(
                                 text = item.displayName,
@@ -188,9 +206,7 @@ fun ViewerScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                 ) {
                     ViewerAction(Icons.Default.Share, "Share") {
-                        uiState.currentItem?.let { item ->
-                            context.shareMedia(item.uri, item.mimeType)
-                        }
+                        uiState.currentItem?.let { context.shareMedia(it.uri, it.mimeType) }
                     }
                     if (uiState.currentItem?.isVideo != true) {
                         ViewerAction(Icons.Default.Edit, "Edit") { onOpenEditor() }
@@ -209,12 +225,16 @@ fun ViewerScreen(
     if (showDeleteDialog) {
         ConfirmDialog(
             title = "Delete?",
-            message = "This will be moved to Recently Deleted.",
+            message = "This will be moved to the system trash.",
             confirmText = "Delete",
             onConfirm = {
-                uiState.currentItem?.let { viewModel.deleteItem(it) }
+                val item = uiState.currentItem
                 showDeleteDialog = false
-                if (uiState.items.size <= 1) onNavigateUp()
+                if (item != null) {
+                    viewModel.deleteItem(item)
+                    // For pre-R: item removed immediately; check if list is empty
+                    if (uiState.items.size <= 1) onNavigateUp()
+                }
             },
             onDismiss = { showDeleteDialog = false },
             isDestructive = true,
@@ -259,10 +279,7 @@ private fun VideoThumbnailPage(
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize(),
         )
-        IconButton(
-            onClick = onPlayClick,
-            modifier = Modifier.size(80.dp),
-        ) {
+        IconButton(onClick = onPlayClick, modifier = Modifier.size(80.dp)) {
             Icon(
                 imageVector = Icons.Default.PlayCircle,
                 contentDescription = "Play",
@@ -273,28 +290,31 @@ private fun VideoThumbnailPage(
     }
 }
 
+/**
+ * Zoomable image with pinch-to-zoom and double-tap zoom.
+ * Zoom state is keyed to [pageIndex] so navigating to a new page always resets to 1×.
+ */
 @Composable
 private fun ZoomableImage(
     item: MediaItem,
+    pageIndex: Int,
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var scale by remember { mutableStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
+    var scale by remember(pageIndex) { mutableStateOf(1f) }
+    var offset by remember(pageIndex) { mutableStateOf(Offset.Zero) }
 
     val transformableState = rememberTransformableState { zoomChange, offsetChange, _ ->
-        scale = (scale * zoomChange).coerceIn(1f, 5f)
-        if (scale > 1f) offset += offsetChange
-    }
-
-    LaunchedEffect(scale) {
-        if (scale <= 1f) offset = Offset.Zero
+        val newScale = (scale * zoomChange).coerceIn(1f, 5f)
+        val newOffset = if (newScale > 1f) offset + offsetChange else Offset.Zero
+        scale = newScale
+        offset = newOffset
     }
 
     Box(
         modifier = modifier
             .transformable(transformableState)
-            .pointerInput(Unit) {
+            .pointerInput(pageIndex) {
                 detectTapGestures(
                     onTap = { onTap() },
                     onDoubleTap = {
@@ -367,7 +387,10 @@ private fun PhotoInfoSheet(item: MediaItem, onDismiss: () -> Unit) {
             InfoRow("File Name", item.displayName)
             InfoRow("Size", item.formattedSize)
             if (item.resolution.isNotEmpty()) InfoRow("Resolution", item.resolution)
-            InfoRow("Date", (item.dateTaken?.times(1000) ?: item.dateAdded * 1000L).toFormattedDateTime())
+            InfoRow(
+                "Date",
+                (item.dateTaken?.times(1000) ?: item.dateAdded * 1000L).toFormattedDateTime(),
+            )
             InfoRow("Type", item.mimeType)
             item.duration?.let { InfoRow("Duration", it.toFormattedDuration()) }
             if (item.bucketName.isNotEmpty()) InfoRow("Album", item.bucketName)
@@ -388,11 +411,7 @@ private fun InfoRow(label: String, value: String) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-        )
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
     }
 }
 

@@ -1,18 +1,23 @@
 package com.grow.gallery.core.media
 
+import android.app.PendingIntent
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
-import android.database.Cursor
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.MediaStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
-import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,28 +39,38 @@ class MediaRepository @Inject constructor(
         MediaStore.Video.Media.EXTERNAL_CONTENT_URI
     }
 
-    fun observeMedia(query: MediaQuery): Flow<List<MediaGroup>> = flow {
-        emit(loadMedia(query))
+    /**
+     * Emits Unit whenever the device's image or video collection changes.
+     * Collect this in a ViewModel and debounce to drive reactive reloads.
+     */
+    fun observeMediaChanges(): Flow<Unit> = callbackFlow {
+        val handler = Handler(Looper.getMainLooper())
+        val observer = object : ContentObserver(handler) {
+            override fun onChange(selfChange: Boolean) {
+                trySend(Unit)
+            }
+        }
+        contentResolver.registerContentObserver(imageCollection, true, observer)
+        contentResolver.registerContentObserver(videoCollection, true, observer)
+        awaitClose { contentResolver.unregisterContentObserver(observer) }
     }.flowOn(Dispatchers.IO)
 
     suspend fun loadMedia(query: MediaQuery): List<MediaGroup> = withContext(Dispatchers.IO) {
         val items = mutableListOf<MediaItem>()
-        if (query.filter != MediaFilter.VIDEOS) {
-            items.addAll(queryImages(query))
-        }
-        if (query.filter != MediaFilter.PHOTOS) {
-            items.addAll(queryVideos(query))
-        }
+        if (query.filter != MediaFilter.VIDEOS) items.addAll(queryImages(query))
+        if (query.filter != MediaFilter.PHOTOS) items.addAll(queryVideos(query))
+
         val sorted = when (query.sortOrder) {
             SortOrder.NEWEST -> items.sortedByDescending { it.dateTaken ?: it.dateAdded }
             SortOrder.OLDEST -> items.sortedBy { it.dateTaken ?: it.dateAdded }
             SortOrder.SIZE_DESC -> items.sortedByDescending { it.size }
             SortOrder.SIZE_ASC -> items.sortedBy { it.size }
         }
-        if (query.filter == MediaFilter.FAVORITES) {
-            return@withContext groupByDate(sorted.filter { it.isFavorite })
-        }
-        groupByDate(sorted)
+
+        val filtered = if (query.filter == MediaFilter.FAVORITES) sorted.filter { it.isFavorite }
+        else sorted
+
+        groupByDate(filtered)
     }
 
     private fun groupByDate(items: List<MediaItem>): List<MediaGroup> {
@@ -69,8 +84,7 @@ class MediaRepository @Inject constructor(
                     ts >= today -> "Today"
                     ts >= yesterday -> "Yesterday"
                     else -> {
-                        val cal = java.util.Calendar.getInstance()
-                        cal.timeInMillis = ts
+                        val cal = java.util.Calendar.getInstance().apply { timeInMillis = ts }
                         val month = cal.getDisplayName(
                             java.util.Calendar.MONTH,
                             java.util.Calendar.LONG,
@@ -84,12 +98,13 @@ class MediaRepository @Inject constructor(
     }
 
     private fun startOfDay(timeMs: Long): Long {
-        val cal = java.util.Calendar.getInstance()
-        cal.timeInMillis = timeMs
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        cal.set(java.util.Calendar.MINUTE, 0)
-        cal.set(java.util.Calendar.SECOND, 0)
-        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = timeMs
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
         return cal.timeInMillis
     }
 
@@ -112,13 +127,12 @@ class MediaRepository @Inject constructor(
             }
         }.toTypedArray()
 
-        val selection = buildSelection(query, isVideo = false)
-        val selectionArgs = buildSelectionArgs(query)
-        val sortOrder = buildSortOrder(query)
-
         val results = mutableListOf<MediaItem>()
         contentResolver.query(
-            imageCollection, projection, selection, selectionArgs, sortOrder
+            imageCollection, projection,
+            buildSelection(query, isVideo = false),
+            buildSelectionArgs(query),
+            buildSortOrder(query),
         )?.use { cursor ->
             val idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
             val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
@@ -178,13 +192,12 @@ class MediaRepository @Inject constructor(
             }
         }.toTypedArray()
 
-        val selection = buildSelection(query, isVideo = true)
-        val selectionArgs = buildSelectionArgs(query)
-        val sortOrder = buildSortOrder(query)
-
         val results = mutableListOf<MediaItem>()
         contentResolver.query(
-            videoCollection, projection, selection, selectionArgs, sortOrder
+            videoCollection, projection,
+            buildSelection(query, isVideo = true),
+            buildSelectionArgs(query),
+            buildSortOrder(query),
         )?.use { cursor ->
             val idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
@@ -230,7 +243,6 @@ class MediaRepository @Inject constructor(
     suspend fun loadAlbums(): List<Album> = withContext(Dispatchers.IO) {
         val buckets = mutableMapOf<Long, Triple<String, Uri?, Int>>()
 
-        // Images
         val imgProjection = arrayOf(
             MediaStore.Images.Media.BUCKET_ID,
             MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
@@ -245,17 +257,17 @@ class MediaRepository @Inject constructor(
             while (cursor.moveToNext()) {
                 val bucketId = cursor.getLong(bucketIdCol)
                 val bucketName = cursor.getString(bucketNameCol) ?: "Unknown"
-                if (!buckets.containsKey(bucketId)) {
+                val current = buckets[bucketId]
+                if (current == null) {
                     val mediaId = cursor.getLong(idCol)
                     val coverUri = ContentUris.withAppendedId(imageCollection, mediaId)
-                    buckets[bucketId] = Triple(bucketName, coverUri, 0)
+                    buckets[bucketId] = Triple(bucketName, coverUri, 1)
+                } else {
+                    buckets[bucketId] = Triple(current.first, current.second, current.third + 1)
                 }
-                val current = buckets[bucketId]!!
-                buckets[bucketId] = Triple(current.first, current.second, current.third + 1)
             }
         }
 
-        // Videos
         val vidProjection = arrayOf(
             MediaStore.Video.Media.BUCKET_ID,
             MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
@@ -292,19 +304,25 @@ class MediaRepository @Inject constructor(
         }.sortedByDescending { it.mediaCount }
     }
 
+    /**
+     * On Android R+ (API 30+): returns a PendingIntent the screen must launch via
+     * StartIntentSenderForResult — the system shows a confirmation dialog.
+     * On older devices: deletes directly and returns null.
+     */
+    suspend fun prepareDelete(items: List<MediaItem>): PendingIntent? = withContext(Dispatchers.IO) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            MediaStore.createDeleteRequest(contentResolver, items.map { it.uri })
+        } else {
+            items.forEach { contentResolver.delete(it.uri, null, null) }
+            null
+        }
+    }
+
+    /** Legacy direct delete — only valid on pre-R devices. */
     suspend fun deleteMedia(items: List<MediaItem>): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val uris = items.map { it.uri }
-                // On API 30+, deletion creates a pending intent that must be confirmed by user
-                // We return success here; actual deletion is handled via activity result
-                Result.success(Unit)
-            } else {
-                items.forEach { item ->
-                    contentResolver.delete(item.uri, null, null)
-                }
-                Result.success(Unit)
-            }
+            items.forEach { contentResolver.delete(it.uri, null, null) }
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -343,28 +361,23 @@ class MediaRepository @Inject constructor(
     private fun buildSelection(query: MediaQuery, isVideo: Boolean): String? {
         val parts = mutableListOf<String>()
         if (query.albumId != null) {
-            val bucketCol = if (isVideo) MediaStore.Video.Media.BUCKET_ID else MediaStore.Images.Media.BUCKET_ID
-            parts.add("$bucketCol = ${query.albumId}")
+            val col = if (isVideo) MediaStore.Video.Media.BUCKET_ID else MediaStore.Images.Media.BUCKET_ID
+            parts.add("$col = ${query.albumId}")
         }
         if (query.searchQuery.isNotBlank()) {
-            val nameCol = if (isVideo) MediaStore.Video.Media.DISPLAY_NAME else MediaStore.Images.Media.DISPLAY_NAME
-            parts.add("$nameCol LIKE ?")
+            val col = if (isVideo) MediaStore.Video.Media.DISPLAY_NAME else MediaStore.Images.Media.DISPLAY_NAME
+            parts.add("$col LIKE ?")
         }
-        return if (parts.isEmpty()) null else parts.joinToString(" AND ")
+        return parts.takeIf { it.isNotEmpty() }?.joinToString(" AND ")
     }
 
-    private fun buildSelectionArgs(query: MediaQuery): Array<String>? {
-        return if (query.searchQuery.isNotBlank()) {
-            arrayOf("%${query.searchQuery}%")
-        } else null
-    }
+    private fun buildSelectionArgs(query: MediaQuery): Array<String>? =
+        if (query.searchQuery.isNotBlank()) arrayOf("%${query.searchQuery}%") else null
 
-    private fun buildSortOrder(query: MediaQuery): String {
-        return when (query.sortOrder) {
-            SortOrder.NEWEST -> "${MediaStore.MediaColumns.DATE_ADDED} DESC"
-            SortOrder.OLDEST -> "${MediaStore.MediaColumns.DATE_ADDED} ASC"
-            SortOrder.SIZE_DESC -> "${MediaStore.MediaColumns.SIZE} DESC"
-            SortOrder.SIZE_ASC -> "${MediaStore.MediaColumns.SIZE} ASC"
-        }
+    private fun buildSortOrder(query: MediaQuery): String = when (query.sortOrder) {
+        SortOrder.NEWEST -> "${MediaStore.MediaColumns.DATE_ADDED} DESC"
+        SortOrder.OLDEST -> "${MediaStore.MediaColumns.DATE_ADDED} ASC"
+        SortOrder.SIZE_DESC -> "${MediaStore.MediaColumns.SIZE} DESC"
+        SortOrder.SIZE_ASC -> "${MediaStore.MediaColumns.SIZE} ASC"
     }
 }
