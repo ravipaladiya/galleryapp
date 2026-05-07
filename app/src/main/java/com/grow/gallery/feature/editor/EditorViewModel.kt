@@ -86,9 +86,7 @@ class EditorViewModel @Inject constructor(
 
     private fun applyAndSave(sourceUri: Uri): Uri? {
         val state = _uiState.value
-        val src = context.contentResolver.openInputStream(sourceUri)?.use { stream ->
-            BitmapFactory.decodeStream(stream)
-        } ?: return null
+        val src = decodeSampledBitmap(sourceUri, maxDim = 4096) ?: return null
 
         val output: Bitmap
         val hasAdjustments = state.brightness != 0f || state.contrast != 0f ||
@@ -141,6 +139,21 @@ class EditorViewModel @Inject constructor(
         }
         if (output !== src) output.recycle()
         return outUri
+    }
+
+    private fun decodeSampledBitmap(uri: Uri, maxDim: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        val sampleSize = run {
+            var scale = 1
+            while (bounds.outWidth / scale > maxDim || bounds.outHeight / scale > maxDim) scale *= 2
+            scale
+        }
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
     }
 
     private fun buildColorMatrix(state: EditorUiState): ColorMatrix {

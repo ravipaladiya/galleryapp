@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
@@ -42,14 +44,14 @@ fun MemoriesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    val pullRefreshState = rememberPullToRefreshState()
+    var isRefreshing by remember { mutableStateOf(false) }
+    val pullToRefreshState = rememberPullToRefreshState()
 
-    // Trigger refresh and end the pull-to-refresh animation once loading completes
-    LaunchedEffect(pullRefreshState.isRefreshing) {
-        if (pullRefreshState.isRefreshing) {
+    LaunchedEffect(isRefreshing) {
+        if (isRefreshing) {
             viewModel.refresh()
             snapshotFlow { uiState.isLoading }.filter { !it }.first()
-            pullRefreshState.endRefresh()
+            isRefreshing = false
         }
     }
 
@@ -60,7 +62,6 @@ fun MemoriesScreen(
                 actions = {
                     IconButton(
                         onClick = { onOpenSlideshow(emptyList()) },
-                        // Enable whenever the screen is visible — slideshow works on all media even without curated memories
                         enabled = true,
                     ) {
                         Icon(Icons.Default.PlayCircle, "Slideshow")
@@ -75,26 +76,30 @@ fun MemoriesScreen(
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
     ) { paddingValues ->
-        Box(
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { isRefreshing = true },
+            state = pullToRefreshState,
             modifier = Modifier
                 .fillMaxSize()
-                .nestedScroll(pullRefreshState.nestedScrollConnection),
+                .padding(top = paddingValues.calculateTopPadding()),
         ) {
             when {
-                uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
-                uiState.memories.isEmpty() && uiState.onThisDay.isEmpty() -> EmptyState(
+                uiState.isLoading && !isRefreshing -> LoadingScreen(Modifier.fillMaxSize())
+                uiState.memories.isEmpty() && uiState.onThisDay.isEmpty() && !isRefreshing -> EmptyState(
                     icon = Icons.Default.AutoAwesome,
                     title = "No Memories Yet",
                     description = "Take more photos to create memories. Your best moments will appear here.",
-                    modifier = Modifier.padding(paddingValues),
+                    modifier = Modifier.fillMaxSize(),
                 )
                 else -> {
                     LazyColumn(
                         contentPadding = PaddingValues(
-                            top = paddingValues.calculateTopPadding(),
                             bottom = paddingValues.calculateBottomPadding() + 16.dp,
                         ),
-                        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .nestedScroll(scrollBehavior.nestedScrollConnection),
                     ) {
                         if (uiState.onThisDay.isNotEmpty()) {
                             item {
@@ -107,7 +112,6 @@ fun MemoriesScreen(
 
                         items(
                             uiState.memories,
-                            // Stable key: label + year + item count — prevents duplicate-key crash
                             key = { "${it.label}-${it.year}-${it.items.size}" },
                         ) { memory ->
                             MemoryCard(
@@ -119,13 +123,6 @@ fun MemoriesScreen(
                     }
                 }
             }
-
-            PullToRefreshContainer(
-                state = pullRefreshState,
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = paddingValues.calculateTopPadding()),
-            )
         }
     }
 }

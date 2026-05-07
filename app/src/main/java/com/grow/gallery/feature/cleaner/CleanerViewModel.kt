@@ -4,6 +4,7 @@ import android.app.PendingIntent
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.grow.gallery.core.common.toFormattedSize
 import com.grow.gallery.core.media.MediaItem
 import com.grow.gallery.core.media.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -204,12 +205,5 @@ class CleanerViewModel @Inject constructor(
 
     fun reset() {
         _uiState.update { CleanerUiState() }
-    }
-
-    private fun Long.toFormattedSize(): String = when {
-        this >= 1_000_000_000L -> "%.1f GB".format(this / 1_000_000_000.0)
-        this >= 1_000_000L -> "%.1f MB".format(this / 1_000_000.0)
-        this >= 1_000L -> "%.0f KB".format(this / 1_000.0)
-        else -> "$this B"
     }
 }
