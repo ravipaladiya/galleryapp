@@ -16,7 +16,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import coil.memory.MemoryCache
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Precision
 import com.grow.gallery.core.designsystem.ShapeAlbumCard
 import com.grow.gallery.core.designsystem.Spacing
 import com.grow.gallery.core.media.Album
@@ -37,8 +40,12 @@ fun AlbumCard(
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(album.coverUri)
-                .crossfade(true)
-                .size(400)
+                .memoryCacheKey(MemoryCache.Key("album_cover_${album.id}"))
+                .diskCacheKey("album_cover_${album.id}")
+                .precision(Precision.INEXACT)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .allowHardware(true)
                 .build(),
             contentDescription = album.name,
             contentScale = ContentScale.Crop,

@@ -16,13 +16,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import coil.memory.MemoryCache
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Precision
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 import com.grow.gallery.core.media.MediaItem
@@ -125,8 +129,15 @@ fun CollageScreen(
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
             )
+            val screenWidthDp = LocalConfiguration.current.screenWidthDp
+            val pickerColumns = when {
+                screenWidthDp >= 840 -> 8
+                screenWidthDp >= 600 -> 6
+                else -> 4
+            }
             LazyVerticalGrid(
-                columns = GridCells.Fixed(4),
+                columns = GridCells.Fixed(pickerColumns),
+                state = rememberLazyGridState(),
                 contentPadding = PaddingValues(horizontal = Spacing.lg, vertical = Spacing.sm),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -147,8 +158,13 @@ fun CollageScreen(
                     ) {
                         AsyncImage(
                             model = ImageRequest.Builder(LocalContext.current)
-                                .data(item.uri)
-                                .size(200)
+                                .data(item.thumbnailUri ?: item.uri)
+                                .memoryCacheKey(MemoryCache.Key("media_${item.id}"))
+                                .diskCacheKey("media_${item.id}")
+                                .precision(Precision.INEXACT)
+                                .memoryCachePolicy(CachePolicy.ENABLED)
+                                .diskCachePolicy(CachePolicy.ENABLED)
+                                .allowHardware(true)
                                 .build(),
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
@@ -200,8 +216,13 @@ private fun CollagePreview(
                         if (item != null) {
                             AsyncImage(
                                 model = ImageRequest.Builder(LocalContext.current)
-                                    .data(item.uri)
-                                    .size(400)
+                                    .data(item.thumbnailUri ?: item.uri)
+                                    .memoryCacheKey(MemoryCache.Key("media_${item.id}"))
+                                    .diskCacheKey("media_${item.id}")
+                                    .precision(Precision.INEXACT)
+                                    .memoryCachePolicy(CachePolicy.ENABLED)
+                                    .diskCachePolicy(CachePolicy.ENABLED)
+                                    .allowHardware(true)
                                     .build(),
                                 contentDescription = null,
                                 contentScale = ContentScale.Crop,

@@ -21,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -335,8 +336,15 @@ private fun VaultUnlockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> U
                 },
             )
         } else {
+            val screenWidthDp = LocalConfiguration.current.screenWidthDp
+            val columns = when {
+                screenWidthDp >= 840 -> 8
+                screenWidthDp >= 600 -> 5
+                else -> 3
+            }
             LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = GridCells.Fixed(columns),
+                state = rememberLazyGridState(),
                 contentPadding = PaddingValues(
                     top = paddingValues.calculateTopPadding(),
                     bottom = paddingValues.calculateBottomPadding() + 16.dp,

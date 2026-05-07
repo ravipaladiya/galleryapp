@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,7 +23,10 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import coil.memory.MemoryCache
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Precision
 import com.grow.gallery.core.database.TrashItem
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
@@ -112,8 +116,15 @@ fun TrashScreen(
                             modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                         )
                     }
+                    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+                    val trashColumns = when {
+                        screenWidthDp >= 840 -> 8
+                        screenWidthDp >= 600 -> 5
+                        else -> 3
+                    }
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
+                        columns = GridCells.Fixed(trashColumns),
+                        state = rememberLazyGridState(),
                         contentPadding = PaddingValues(bottom = 16.dp),
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -173,10 +184,14 @@ private fun TrashMediaItem(item: TrashItem, onClick: () -> Unit) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(item.thumbnailPath ?: android.net.Uri.parse(item.uri))
-                .crossfade(true)
-                .size(320)
+                .memoryCacheKey(MemoryCache.Key("trash_${item.mediaId}"))
+                .diskCacheKey("trash_${item.mediaId}")
+                .precision(Precision.INEXACT)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .allowHardware(true)
                 .build(),
-            contentDescription = item.displayName,
+            contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
