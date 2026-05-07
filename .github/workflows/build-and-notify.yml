@@ -141,46 +141,11 @@ jobs:
             --arg branch "$BRANCH" \
             --arg sha    "$SHORT_SHA" \
             '{
-              text: (":x: GalleryApp build failed on " + $branch + " (" + $sha + ") - auto-fix attempting"),
+              text: (":x: GalleryApp build failed on " + $branch + " (" + $sha + ")"),
               blocks: [
                 { type: "section", text: { type: "mrkdwn",
-                  text: (":x: *GalleryApp build failed* on `" + $branch + "` @ " + $sha + "\n<https://github.com/" + $repo + "/actions/runs/" + $run_id + "|View logs> - auto-fix job will attempt to patch and open a PR.") } }
+                  text: (":x: *GalleryApp build failed* on `" + $branch + "` @ " + $sha + "\n<https://github.com/" + $repo + "/actions/runs/" + $run_id + "|View logs>") } }
               ]
             }')
           curl -sS -X POST -H 'Content-Type: application/json' --data "$PAYLOAD" "$WEBHOOK" || true
 
-  auto-fix:
-    needs: build-and-notify
-    if: ${{ always() && needs.build-and-notify.result == 'failure' }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Download build log
-        uses: actions/download-artifact@v4
-        with:
-          name: build-log
-          path: /tmp/
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Run auto-fix
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          REPO: ${{ github.repository }}
-          RUN_NUMBER: ${{ github.run_number }}
-          FAILED_SHA: ${{ github.sha }}
-          FAILED_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: python3 .github/scripts/autofix.py
