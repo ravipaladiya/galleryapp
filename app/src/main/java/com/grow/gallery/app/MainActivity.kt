@@ -1,5 +1,6 @@
 package com.grow.gallery.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
@@ -64,6 +65,7 @@ import com.grow.gallery.R
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 val bottomNavItems = listOf(
@@ -98,16 +100,17 @@ class MainActivity : AppCompatActivity() {
 
     @Inject lateinit var vaultManager: VaultManager
 
+    // Compose-readable state so onNewIntent warm-launches update the running composition.
+    private var viewIntentUri by mutableStateOf<android.net.Uri?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
         setTheme(R.style.Theme_GalleryApp)
         enableEdgeToEdge()
 
-        // Handle VIEW intents (e.g. "Open with Gallery" from other apps)
-        val viewIntentUri = if (intent?.action == android.content.Intent.ACTION_VIEW) {
-            intent?.data
-        } else null
+        // Cold-start VIEW intent (e.g. "Open with Gallery" from Files/Photos)
+        viewIntentUri = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.data
 
         setContent {
             val appViewModel: AppViewModel = hiltViewModel()
@@ -122,6 +125,13 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+    }
+
+    // Warm-launch: activity already in task, Android delivers new intent here instead of onCreate.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        viewIntentUri = if (intent.action == Intent.ACTION_VIEW) intent.data else null
     }
 }
 
@@ -481,6 +491,27 @@ private fun AppLockGateScreen(
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
+    // PIN rate-limiting: track consecutive failures and compute lockout end time.
+    var failedAttempts by remember { mutableIntStateOf(0) }
+    var pinLockoutUntilMs by remember { mutableLongStateOf(0L) }
+    var pinLockoutRemainingS by remember { mutableLongStateOf(0L) }
+
+    // Biometric lockout — set when Android reports ERROR_LOCKOUT/ERROR_LOCKOUT_PERMANENT.
+    var biometricLockedPermanent by remember { mutableStateOf(false) }
+    var biometricLockedTemp by remember { mutableStateOf(false) }
+
+    // Countdown ticker for PIN lockout.
+    LaunchedEffect(pinLockoutUntilMs) {
+        while (System.currentTimeMillis() < pinLockoutUntilMs) {
+            pinLockoutRemainingS = (pinLockoutUntilMs - System.currentTimeMillis() + 999) / 1000
+            delay(500L)
+        }
+        pinLockoutRemainingS = 0L
+        if (pinLockoutUntilMs > 0L) biometricLockedTemp = false
+    }
+
+    val isPinLockedOut = System.currentTimeMillis() < pinLockoutUntilMs
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -507,7 +538,8 @@ private fun AppLockGateScreen(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                "Enter your PIN to continue",
+                if (isPinLockedOut) "Too many attempts. Try again in ${pinLockoutRemainingS}s."
+                else "Enter your PIN to continue",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.White.copy(alpha = 0.8f),
                 textAlign = TextAlign.Center,
@@ -533,7 +565,7 @@ private fun AppLockGateScreen(
             }
             Spacer(Modifier.height(Spacing.xxxl))
 
-            // PIN pad
+            // PIN pad — disabled during lockout
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(Spacing.lg),
@@ -551,6 +583,7 @@ private fun AppLockGateScreen(
                             } else {
                                 OutlinedButton(
                                     onClick = {
+                                        if (isPinLockedOut) return@OutlinedButton
                                         if (key == "⌫") {
                                             if (pin.isNotEmpty()) {
                                                 pin = pin.dropLast(1)
@@ -563,9 +596,22 @@ private fun AppLockGateScreen(
                                                 scope.launch(Dispatchers.Default) {
                                                     val correct = vaultManager.verifyPin(pin)
                                                     if (correct) {
+                                                        failedAttempts = 0
                                                         onUnlocked()
                                                     } else {
-                                                        error = "Incorrect PIN"
+                                                        failedAttempts++
+                                                        val lockoutSec = when {
+                                                            failedAttempts >= 10 -> 300L
+                                                            failedAttempts >= 7  -> 60L
+                                                            failedAttempts >= 5  -> 30L
+                                                            else                 -> 0L
+                                                        }
+                                                        if (lockoutSec > 0L) {
+                                                            pinLockoutUntilMs = System.currentTimeMillis() + lockoutSec * 1000L
+                                                            error = null
+                                                        } else {
+                                                            error = "Incorrect PIN (${failedAttempts} failed attempt${if (failedAttempts > 1) "s" else ""})"
+                                                        }
                                                         pin = ""
                                                     }
                                                 }
@@ -574,13 +620,18 @@ private fun AppLockGateScreen(
                                     },
                                     modifier = Modifier.size(64.dp),
                                     shape = CircleShape,
+                                    enabled = !isPinLockedOut,
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (isPinLockedOut) Color.White.copy(alpha = 0.15f)
+                                        else Color.White.copy(alpha = 0.3f),
+                                    ),
                                 ) {
                                     if (key == "⌫") {
-                                        Icon(Icons.Default.Backspace, "Delete", tint = Color.White, modifier = Modifier.size(20.dp))
+                                        Icon(Icons.Default.Backspace, "Delete", tint = Color.White.copy(alpha = if (isPinLockedOut) 0.4f else 1f), modifier = Modifier.size(20.dp))
                                     } else {
-                                        Text(key, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+                                        Text(key, color = Color.White.copy(alpha = if (isPinLockedOut) 0.4f else 1f), fontSize = 22.sp, fontWeight = FontWeight.Medium)
                                     }
                                 }
                             }
@@ -591,40 +642,64 @@ private fun AppLockGateScreen(
 
             if (biometricEnabled) {
                 Spacer(Modifier.height(Spacing.xl))
-                TextButton(onClick = {
-                    val executor = ContextCompat.getMainExecutor(activity)
-                    val callback = object : BiometricPrompt.AuthenticationCallback() {
-                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                            onUnlocked()
-                        }
-                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                            if (errorCode != BiometricPrompt.ERROR_USER_CANCELED &&
-                                errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
-                                error = errString.toString()
+                val biometricUnavailable = biometricLockedPermanent || biometricLockedTemp
+                TextButton(
+                    onClick = {
+                        if (biometricUnavailable) return@TextButton
+                        val executor = ContextCompat.getMainExecutor(activity)
+                        val callback = object : BiometricPrompt.AuthenticationCallback() {
+                            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                                biometricLockedTemp = false
+                                onUnlocked()
                             }
+                            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                                when (errorCode) {
+                                    BiometricPrompt.ERROR_LOCKOUT -> {
+                                        biometricLockedTemp = true
+                                        error = "Biometric locked — too many attempts. Wait 30 seconds or use PIN."
+                                    }
+                                    BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> {
+                                        biometricLockedPermanent = true
+                                        error = "Biometric permanently locked. Use your PIN."
+                                    }
+                                    BiometricPrompt.ERROR_USER_CANCELED,
+                                    BiometricPrompt.ERROR_NEGATIVE_BUTTON -> { /* user tapped cancel / "Use PIN" */ }
+                                    else -> error = errString.toString()
+                                }
+                            }
+                            override fun onAuthenticationFailed() {}
                         }
-                        override fun onAuthenticationFailed() {}
-                    }
-                    val biometricManager = BiometricManager.from(activity)
-                    val canAuthStrong = biometricManager.canAuthenticate(
-                        BiometricManager.Authenticators.BIOMETRIC_STRONG
-                    ) == BiometricManager.BIOMETRIC_SUCCESS
-                    if (!canAuthStrong) {
-                        error = "Strong biometric not available on this device"
-                        return@TextButton
-                    }
-                    BiometricPrompt(activity, executor, callback).authenticate(
-                        BiometricPrompt.PromptInfo.Builder()
-                            .setTitle("Unlock Gallery")
-                            .setSubtitle("Use biometric to access your gallery")
-                            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-                            .setNegativeButtonText("Use PIN")
-                            .build()
+                        val biometricManager = BiometricManager.from(activity)
+                        val canAuthStrong = biometricManager.canAuthenticate(
+                            BiometricManager.Authenticators.BIOMETRIC_STRONG
+                        ) == BiometricManager.BIOMETRIC_SUCCESS
+                        if (!canAuthStrong) {
+                            error = "Strong biometric not available on this device"
+                            return@TextButton
+                        }
+                        BiometricPrompt(activity, executor, callback).authenticate(
+                            BiometricPrompt.PromptInfo.Builder()
+                                .setTitle("Unlock Gallery")
+                                .setSubtitle("Use biometric to access your gallery")
+                                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                                .setNegativeButtonText("Use PIN")
+                                .build()
+                        )
+                    },
+                    enabled = !biometricUnavailable,
+                ) {
+                    Icon(
+                        Icons.Default.Fingerprint,
+                        null,
+                        tint = if (biometricUnavailable) Color.White.copy(alpha = 0.38f) else Color.White,
                     )
-                }) {
-                    Icon(Icons.Default.Fingerprint, null, tint = Color.White)
                     Spacer(Modifier.width(Spacing.sm))
-                    Text("Use Biometric", color = Color.White)
+                    Text(
+                        if (biometricLockedPermanent) "Biometric Unavailable"
+                        else if (biometricLockedTemp) "Biometric Locked"
+                        else "Use Biometric",
+                        color = if (biometricUnavailable) Color.White.copy(alpha = 0.38f) else Color.White,
+                    )
                 }
             }
         }

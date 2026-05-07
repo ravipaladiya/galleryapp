@@ -2,6 +2,7 @@ package com.grow.gallery.core.security
 
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -13,9 +14,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
+import java.io.DataInputStream
 import java.io.File
 import java.security.KeyStore
 import java.security.SecureRandom
+import java.util.UUID
 import javax.crypto.Cipher
 import javax.crypto.CipherInputStream
 import javax.crypto.CipherOutputStream
@@ -40,13 +43,16 @@ class VaultManager @Inject constructor(
         private val KEY_VAULT_ENABLED = booleanPreferencesKey("vault_enabled")
         private val KEY_BIOMETRIC_ENABLED = booleanPreferencesKey("biometric_enabled")
         private val KEY_APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
-        private const val KEYSTORE_ALIAS = "gallery_vault_key"
+        // v2 alias forces regeneration with setUserAuthenticationRequired(true)
+        private const val KEYSTORE_ALIAS = "gallery_vault_key_v2"
         private const val VAULT_DIR = "vault"
         private const val GCM_IV_SIZE = 12
         private const val GCM_TAG_SIZE = 128
         private const val PBKDF2_ITERATIONS = 200_000
         private const val PBKDF2_KEY_LENGTH = 256
         private const val SALT_LENGTH = 32
+        // Key valid for 5 minutes after the last device credential authentication.
+        private const val KEY_AUTH_VALIDITY_SECONDS = 300
     }
 
     val isVaultEnabled: Flow<Boolean> = dataStore.data.map { it[KEY_VAULT_ENABLED] ?: false }
@@ -91,13 +97,17 @@ class VaultManager @Inject constructor(
      * Copies a media file from [sourceUri] into the app's private vault directory,
      * encrypted with AES-GCM using the Android Keystore key.
      * Returns the vault file name or null on failure.
+     * Throws [android.security.keystore.UserNotAuthenticatedException] if the device
+     * credential window has elapsed — callers should surface a re-authentication prompt.
      */
     suspend fun addToVault(sourceUri: Uri, originalName: String): String? =
         withContext(Dispatchers.IO) {
             try {
                 val vaultDir = File(context.filesDir, VAULT_DIR).also { it.mkdirs() }
-                val vaultFileName = "${System.currentTimeMillis()}_${sanitize(originalName)}.enc"
+                // UUID avoids silent overwrites from same-millisecond or same-name imports.
+                val vaultFileName = "${UUID.randomUUID()}_${sanitize(originalName)}.enc"
                 val vaultFile = File(vaultDir, vaultFileName)
+                if (vaultFile.exists()) throw IllegalStateException("Vault file already exists: $vaultFileName")
 
                 val secretKey = getOrCreateSecretKey()
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -121,6 +131,7 @@ class VaultManager @Inject constructor(
     /**
      * Opens an encrypted vault file for reading.
      * Caller is responsible for closing the returned stream.
+     * Returns null if the file does not exist or decryption setup fails.
      */
     fun openVaultFile(vaultFileName: String): java.io.InputStream? {
         return try {
@@ -128,7 +139,9 @@ class VaultManager @Inject constructor(
             if (!vaultFile.exists()) return null
             val secretKey = getOrCreateSecretKey()
             val fileIn = vaultFile.inputStream()
-            val iv = ByteArray(GCM_IV_SIZE).also { fileIn.read(it) }
+            // readFully ensures exactly GCM_IV_SIZE bytes are read; plain read() may return fewer.
+            val iv = ByteArray(GCM_IV_SIZE)
+            DataInputStream(fileIn).readFully(iv)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(GCM_TAG_SIZE, iv))
             CipherInputStream(fileIn, cipher)
@@ -178,15 +191,27 @@ class VaultManager @Inject constructor(
         val keyGenerator = KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore"
         )
-        val spec = KeyGenParameterSpec.Builder(
+        val specBuilder = KeyGenParameterSpec.Builder(
             KEYSTORE_ALIAS,
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
         )
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setUserAuthenticationRequired(false)
-            .build()
-        keyGenerator.init(spec)
+            .setUserAuthenticationRequired(true)
+
+        // API 30+: explicit auth types; API < 30: validity duration (legacy).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            @Suppress("NewApi")
+            specBuilder.setUserAuthenticationParameters(
+                KEY_AUTH_VALIDITY_SECONDS,
+                KeyProperties.AUTH_BIOMETRIC_STRONG or KeyProperties.AUTH_DEVICE_CREDENTIAL,
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            specBuilder.setUserAuthenticationValidityDurationSeconds(KEY_AUTH_VALIDITY_SECONDS)
+        }
+
+        keyGenerator.init(specBuilder.build())
         return keyGenerator.generateKey()
     }
 }

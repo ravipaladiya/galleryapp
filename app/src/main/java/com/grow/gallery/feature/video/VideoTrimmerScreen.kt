@@ -47,12 +47,16 @@ fun VideoTrimmerScreen(
         }
     }
 
-    // Seek preview when trim handles move
+    // Track which handle is actively being dragged so only its position drives seek.
+    var activeDragHandle by remember { mutableStateOf<String?>(null) } // "start" | "end" | null
+
     LaunchedEffect(uiState.trimStart) {
-        if (exoPlayer.duration > 0) exoPlayer.seekTo(uiState.trimStart)
+        if ((activeDragHandle == "start" || activeDragHandle == null) && exoPlayer.duration > 0)
+            exoPlayer.seekTo(uiState.trimStart)
     }
     LaunchedEffect(uiState.trimEnd) {
-        if (exoPlayer.duration > 0) exoPlayer.seekTo(uiState.trimEnd)
+        if ((activeDragHandle == "end" || activeDragHandle == null) && exoPlayer.duration > 0)
+            exoPlayer.seekTo(uiState.trimEnd)
     }
 
     DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
@@ -216,30 +220,41 @@ fun VideoTrimmerScreen(
 
                 Spacer(Modifier.height(Spacing.lg))
 
-                // Start trim slider
-                Text(
-                    "Start: ${uiState.trimStart.toFormattedDuration()}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Slider(
-                    value = if (duration > 0) uiState.trimStart.toFloat() / duration else 0f,
-                    onValueChange = { viewModel.setTrimStart((it * duration).toLong()) },
+                // Unified RangeSlider: handles cannot cross each other.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        "Start: ${uiState.trimStart.toFormattedDuration()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "End: ${uiState.trimEnd.toFormattedDuration()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                val startFraction = if (duration > 0) uiState.trimStart.toFloat() / duration else 0f
+                val endFraction = if (duration > 0) uiState.trimEnd.toFloat() / duration else 1f
+                RangeSlider(
+                    value = startFraction..endFraction,
+                    onValueChange = { range ->
+                        val newStart = (range.start * duration).toLong()
+                        val newEnd = (range.endInclusive * duration).toLong()
+                        // Determine which handle moved to update only that seek target.
+                        if (newStart != uiState.trimStart) {
+                            activeDragHandle = "start"
+                            viewModel.setTrimStart(newStart)
+                        } else if (newEnd != uiState.trimEnd) {
+                            activeDragHandle = "end"
+                            viewModel.setTrimEnd(newEnd)
+                        }
+                    },
+                    onValueChangeFinished = { activeDragHandle = null },
                     valueRange = 0f..1f,
-                    colors = SliderDefaults.colors(thumbColor = Brand.Blue, activeTrackColor = Brand.Blue),
-                    enabled = !uiState.isExporting,
-                )
-
-                // End trim slider
-                Text(
-                    "End: ${uiState.trimEnd.toFormattedDuration()}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Slider(
-                    value = if (duration > 0) uiState.trimEnd.toFloat() / duration else 1f,
-                    onValueChange = { viewModel.setTrimEnd((it * duration).toLong()) },
-                    valueRange = 0f..1f,
+                    steps = 0,
                     colors = SliderDefaults.colors(thumbColor = Brand.Blue, activeTrackColor = Brand.Blue),
                     enabled = !uiState.isExporting,
                 )

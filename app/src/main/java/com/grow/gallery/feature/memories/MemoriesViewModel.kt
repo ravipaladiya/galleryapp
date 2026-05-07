@@ -50,36 +50,34 @@ class MemoriesViewModel @Inject constructor(
                 val currentDay = cal.get(Calendar.DAY_OF_MONTH)
                 val currentYear = cal.get(Calendar.YEAR)
 
-                // Reuse a single Calendar to avoid O(N) allocations
-                val itemCal = Calendar.getInstance()
+                // Per-item Calendar — avoids shared-mutable-state bugs across filter/groupBy/map.
+                fun Long.toCalendar(): Calendar = Calendar.getInstance().also { it.timeInMillis = this * 1000L }
 
                 val onThisDay = allItems.filter { item ->
-                    itemCal.timeInMillis = (item.dateTaken ?: item.dateAdded) * 1000L
-                    itemCal.get(Calendar.MONTH) == currentMonth &&
-                            itemCal.get(Calendar.DAY_OF_MONTH) == currentDay &&
-                            itemCal.get(Calendar.YEAR) <= currentYear
+                    val c = (item.dateTaken ?: item.dateAdded).toCalendar()
+                    c.get(Calendar.MONTH) == currentMonth &&
+                            c.get(Calendar.DAY_OF_MONTH) == currentDay &&
+                            c.get(Calendar.YEAR) < currentYear // exclude today's photos
                 }
 
-                // Group by month/year for memories
+                // Group by month/year for memories (min 3 items — consistent with the filter below)
                 val memories = allItems
                     .groupBy { item ->
-                        itemCal.timeInMillis = (item.dateTaken ?: item.dateAdded) * 1000L
-                        val month = itemCal.get(Calendar.MONTH)
-                        val year = itemCal.get(Calendar.YEAR)
-                        Pair(month, year)
+                        val c = (item.dateTaken ?: item.dateAdded).toCalendar()
+                        Pair(c.get(Calendar.MONTH), c.get(Calendar.YEAR))
                     }
                     .entries
                     .filter { it.value.size >= 3 }
                     .map { (monthYear, items) ->
                         val (month, year) = monthYear
-                        // Clear + reset to avoid day-normalization artifacts (e.g. day=31 + Feb → March)
-                        itemCal.clear()
-                        itemCal.set(year, month, 1)
-                        val monthName = itemCal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault())
+                        // Fresh Calendar for display-name lookup avoids day-normalisation artifacts.
+                        val nameCal = Calendar.getInstance().also { it.set(year, month, 1) }
+                        val monthName = nameCal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault())
                             ?.takeIf { it.isNotBlank() }
                             ?: (month + 1).toString()
                         MemoryGroup(
-                            label = "Best of $monthName $year",
+                            // "Photos from …" is honest — no curation signal is applied yet.
+                            label = "Photos from $monthName $year",
                             items = items.take(20),
                             year = year,
                             monthIndex = month,

@@ -88,6 +88,11 @@ fun ViewerScreen(
         }
     }
 
+    // Navigate up when the list becomes empty after an async delete (pre-R path).
+    LaunchedEffect(uiState.items) {
+        if (!uiState.isLoading && uiState.items.isEmpty()) onNavigateUp()
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -232,8 +237,8 @@ fun ViewerScreen(
                 showDeleteDialog = false
                 if (item != null) {
                     viewModel.deleteItem(item)
-                    // For pre-R: item removed immediately; check if list is empty
-                    if (uiState.items.size <= 1) onNavigateUp()
+                    // Navigate up is handled reactively by LaunchedEffect(uiState.items)
+                    // once the async delete updates the state, avoiding the stale-size race.
                 }
             },
             onDismiss = { showDeleteDialog = false },

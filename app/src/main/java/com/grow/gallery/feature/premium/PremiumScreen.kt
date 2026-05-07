@@ -37,8 +37,9 @@ import com.grow.gallery.core.billing.PremiumPlan
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.GalleryTopBar
 
-private const val TOS_URL = "https://example.com/terms"
-private const val PRIVACY_URL = "https://example.com/privacy"
+// TODO: Replace with your app's actual hosted ToS and Privacy Policy URLs before publishing.
+private const val TOS_URL = "https://grow-gallery.app/terms"
+private const val PRIVACY_URL = "https://grow-gallery.app/privacy"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,14 +124,16 @@ private fun PremiumSubscribeContent(
 ) {
     val context = LocalContext.current
 
-    // selectedPlan is set once from the best-value plan and NOT reset on subsequent re-compositions,
-    // so a user's manual plan selection is preserved if the plans list re-emits.
-    var selectedPlan by remember { mutableStateOf<PremiumPlan?>(null) }
+    // Store only the plan ID — not the whole object — so stale productDetails references
+    // are never used when billing reconnects and re-emits a fresh plans list.
+    var selectedPlanId by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(uiState.plans) {
-        if (selectedPlan == null) {
-            selectedPlan = uiState.plans.firstOrNull { it.isBestValue } ?: uiState.plans.firstOrNull()
+        if (selectedPlanId == null) {
+            selectedPlanId = (uiState.plans.firstOrNull { it.isBestValue } ?: uiState.plans.firstOrNull())?.id
         }
     }
+    // Derive selectedPlan lazily from the current plans list using the stored ID.
+    val selectedPlan = uiState.plans.firstOrNull { it.id == selectedPlanId }
 
     Column(
         modifier = Modifier
@@ -202,8 +205,8 @@ private fun PremiumSubscribeContent(
             uiState.plans.forEach { plan ->
                 PlanCard(
                     plan = plan,
-                    isSelected = selectedPlan?.id == plan.id,
-                    onClick = { selectedPlan = plan },
+                    isSelected = selectedPlanId == plan.id,
+                    onClick = { selectedPlanId = plan.id },
                 )
                 Spacer(Modifier.height(Spacing.sm))
             }
@@ -216,7 +219,7 @@ private fun PremiumSubscribeContent(
         ) {
             val canSubscribe = selectedPlan != null && !uiState.isLoading
             Button(
-                onClick = { selectedPlan?.let { onSubscribe(it.id) } },
+                onClick = { selectedPlanId?.let { onSubscribe(it) } },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)

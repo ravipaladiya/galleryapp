@@ -1,5 +1,6 @@
 package com.grow.gallery.feature.albums
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.grow.gallery.core.database.AlbumDao
@@ -22,6 +23,7 @@ data class AlbumDetailUiState(
     val snackbarMessage: String? = null,
     val selectedItems: Set<Long> = emptySet(),
     val isSelectionMode: Boolean = false,
+    val shareUris: List<Uri>? = null,
 )
 
 @HiltViewModel
@@ -95,6 +97,17 @@ class AlbumDetailViewModel @Inject constructor(
 
     fun exitSelectionMode() {
         _uiState.update { it.copy(selectedItems = emptySet(), isSelectionMode = false) }
+    }
+
+    fun prepareShare() {
+        val uris = _uiState.value.items
+            .filter { it.id in _uiState.value.selectedItems }
+            .map { it.uri }
+        _uiState.update { it.copy(shareUris = uris) }
+    }
+
+    fun onShareHandled() {
+        _uiState.update { it.copy(shareUris = null) }
     }
 
     fun onSnackbarShown() {
