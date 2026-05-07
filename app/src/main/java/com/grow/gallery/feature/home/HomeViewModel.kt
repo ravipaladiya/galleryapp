@@ -12,6 +12,7 @@ import com.grow.gallery.core.media.*
 import com.grow.gallery.core.permissions.MediaPermissionState
 import com.grow.gallery.core.permissions.PermissionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
@@ -69,7 +70,9 @@ class HomeViewModel @Inject constructor(
             }
         }
         viewModelScope.launch {
-            dataStoreManager.hideScreenshots.collect { hide ->
+            // drop(1) skips the initial DataStore emission, which is already captured
+            // by loadMedia() in init; only react to genuine user-driven changes.
+            dataStoreManager.hideScreenshots.drop(1).collect { hide ->
                 _uiState.update { it.copy(hideScreenshots = hide) }
                 loadMedia()
             }
@@ -118,6 +121,8 @@ class HomeViewModel @Inject constructor(
                         permissionState = permState,
                     )
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(isLoading = false, error = e.message ?: "Failed to load media")
