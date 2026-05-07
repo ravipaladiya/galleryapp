@@ -3,6 +3,7 @@ package com.grow.gallery.feature.settings
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.grow.gallery.BuildConfig
