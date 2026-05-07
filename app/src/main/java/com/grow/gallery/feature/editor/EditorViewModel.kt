@@ -81,7 +81,11 @@ class EditorViewModel @Inject constructor(
     }
 
     fun saveImage() {
-        val uri = _uiState.value.imageUri ?: return
+        val uri = _uiState.value.imageUri
+        if (uri == null) {
+            _uiState.update { it.copy(error = "No photo loaded") }
+            return
+        }
         if (_uiState.value.isProcessing) return
 
         viewModelScope.launch {
@@ -206,10 +210,14 @@ class EditorViewModel @Inject constructor(
     internal fun buildColorMatrix(state: EditorUiState): ColorMatrix {
         val matrix = ColorMatrix()
 
-        // Saturation
-        val satMatrix = ColorMatrix()
-        satMatrix.setSaturation(1f + state.saturation)
-        matrix.postConcat(satMatrix)
+        // When a filter applies its own saturation, skip the user saturation slider
+        // to avoid compounding (e.g. Vivid at 1.5× × user 1.5× = 2.25×) (#H-ED3)
+        val filterOverridesSaturation = state.filterName in setOf("Vivid", "B&W", "Chrome")
+        if (!filterOverridesSaturation) {
+            val satMatrix = ColorMatrix()
+            satMatrix.setSaturation(1f + state.saturation)
+            matrix.postConcat(satMatrix)
+        }
 
         // Brightness and Contrast combined
         val bright = state.brightness
@@ -293,8 +301,13 @@ class EditorViewModel @Inject constructor(
         }
         val startX = (src.width - cropW) / 2
         val startY = (src.height - cropH) / 2
-        return Bitmap.createBitmap(src, startX.coerceAtLeast(0), startY.coerceAtLeast(0),
-            cropW.coerceAtMost(src.width), cropH.coerceAtMost(src.height))
+        return Bitmap.createBitmap(
+            src,
+            startX.coerceAtLeast(0),
+            startY.coerceAtLeast(0),
+            cropW.coerceIn(1, src.width),
+            cropH.coerceIn(1, src.height),
+        )
     }
 
     /**

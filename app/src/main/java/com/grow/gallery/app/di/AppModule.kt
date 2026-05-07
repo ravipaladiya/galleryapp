@@ -3,6 +3,7 @@ package com.grow.gallery.app.di
 import android.content.Context
 import androidx.room.Room
 import com.grow.gallery.core.database.GalleryDatabase
+import com.grow.gallery.core.database.MIGRATION_1_2
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -21,7 +22,7 @@ object AppModule {
             context,
             GalleryDatabase::class.java,
             "gallery_database",
-        ).build()
+        ).addMigrations(MIGRATION_1_2).build()
     }
 
     @Provides

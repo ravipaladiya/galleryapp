@@ -10,7 +10,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import coil.ImageLoader
+import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.grow.gallery.core.media.MediaItem
@@ -66,13 +66,17 @@ class CollageViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
             try {
-                val canvasSize = 1200
+                val canvasW = 1200
+                // Compute canvas height proportional to the layout ratio (#H-CL1)
+                val canvasH = (canvasW * layout.rows.toFloat() / layout.columns.toFloat())
+                    .toInt().coerceAtLeast(1)
                 val gap = 4
-                val cellW = (canvasSize - gap * (layout.columns - 1)) / layout.columns
-                val cellH = (canvasSize - gap * (layout.rows - 1)) / layout.rows
-                val output = Bitmap.createBitmap(canvasSize, canvasSize, Bitmap.Config.ARGB_8888)
+                val cellW = (canvasW - gap * (layout.columns - 1)) / layout.columns
+                val cellH = (canvasH - gap * (layout.rows - 1)) / layout.rows
+                val output = Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(output)
-                val imageLoader = ImageLoader(context)
+                // Use the app-wide Coil singleton to share cache across the app (#H-CL4)
+                val imageLoader = context.applicationContext.imageLoader
 
                 items.forEachIndexed { idx, item ->
                     // Column-major order to match CollagePreview

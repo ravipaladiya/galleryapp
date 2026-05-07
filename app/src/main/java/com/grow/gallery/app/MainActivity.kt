@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -16,6 +17,9 @@ import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -141,6 +145,18 @@ fun GalleryApp(
     // Re-lock when appLockEnabled turns on
     LaunchedEffect(appLockEnabled) {
         if (appLockEnabled) appUnlocked = false
+    }
+
+    // Re-lock whenever the app goes to background (#H-AL1)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, appLockEnabled) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && appLockEnabled) {
+                appUnlocked = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Show app-lock PIN gate if lock is enabled and session is not yet unlocked
@@ -574,6 +590,7 @@ private fun AppLockGateScreen(
                             .setTitle("Unlock Gallery")
                             .setSubtitle("Use biometric to access your gallery")
                             .setNegativeButtonText("Use PIN")
+                            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
                             .build()
                     )
                 }) {

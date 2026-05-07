@@ -58,21 +58,17 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- VIEW filter for image URIs shared from other apps -->
+            <!-- VIEW filter for image URIs shared from other apps (content:// only; file:// is dead on N+) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="content" />
-                <data android:scheme="file" />
-                <data android:mimeType="image/*" />
+                <data android:scheme="content" android:mimeType="image/*" />
             </intent-filter>
             <!-- VIEW filter for video URIs shared from other apps -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <data android:scheme="content" />
-                <data android:scheme="file" />
-                <data android:mimeType="video/*" />
+                <data android:scheme="content" android:mimeType="video/*" />
             </intent-filter>
         </activity>
 
