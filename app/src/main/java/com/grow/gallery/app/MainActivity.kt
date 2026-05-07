@@ -58,6 +58,7 @@ import com.grow.gallery.feature.viewer.ViewerScreen
 import com.grow.gallery.R
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 val bottomNavItems = listOf(
     BottomNavItem(
