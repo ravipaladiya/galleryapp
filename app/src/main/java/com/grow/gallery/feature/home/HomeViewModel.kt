@@ -193,20 +193,6 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(showDeleteConfirm = false) }
 
-            // Track in trash DB before deleting
-            items.forEach { item ->
-                trashDao.insertTrashItem(
-                    TrashItem(
-                        mediaId = item.id,
-                        uri = item.uri.toString(),
-                        displayName = item.displayName,
-                        mimeType = item.mimeType,
-                        size = item.size,
-                        originalPath = item.bucketName,
-                    )
-                )
-            }
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val pendingIntent = try {
                     mediaRepository.prepareDelete(items)
@@ -214,10 +200,24 @@ class HomeViewModel @Inject constructor(
                     _uiState.update { it.copy(snackbarMessage = "Delete failed: ${e.message}") }
                     return@launch
                 }
+                // Save items to pendingDeleteItems; DB rows inserted only after user confirms
                 _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItems = items) }
             } else {
                 val result = mediaRepository.deleteMedia(items)
                 if (result.isSuccess) {
+                    // Insert trash rows only after the delete succeeded
+                    items.forEach { item ->
+                        trashDao.insertTrashItem(
+                            TrashItem(
+                                mediaId = item.id,
+                                uri = item.uri.toString(),
+                                displayName = item.displayName,
+                                mimeType = item.mimeType,
+                                size = item.size,
+                                originalPath = item.bucketName,
+                            )
+                        )
+                    }
                     exitSelectionMode()
                     loadMedia()
                     _uiState.update { it.copy(snackbarMessage = "${items.size} item(s) moved to Recently Deleted") }
@@ -237,12 +237,27 @@ class HomeViewModel @Inject constructor(
 
     /** Called after the system delete confirmation dialog returns. */
     fun onDeleteResult(confirmed: Boolean) {
-        val count = _uiState.value.pendingDeleteItems.size
+        val items = _uiState.value.pendingDeleteItems
+        val count = items.size
         _uiState.update { it.copy(pendingDeleteItems = emptyList()) }
         if (confirmed) {
-            exitSelectionMode()
-            loadMedia()
-            _uiState.update { it.copy(snackbarMessage = "$count item(s) moved to Recently Deleted") }
+            viewModelScope.launch {
+                items.forEach { item ->
+                    trashDao.insertTrashItem(
+                        TrashItem(
+                            mediaId = item.id,
+                            uri = item.uri.toString(),
+                            displayName = item.displayName,
+                            mimeType = item.mimeType,
+                            size = item.size,
+                            originalPath = item.bucketName,
+                        )
+                    )
+                }
+                exitSelectionMode()
+                loadMedia()
+                _uiState.update { it.copy(snackbarMessage = "$count item(s) moved to Recently Deleted") }
+            }
         }
     }
 

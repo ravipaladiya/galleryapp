@@ -5,9 +5,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.grow.gallery.BuildConfig
 import com.grow.gallery.core.billing.BillingManager
 import com.grow.gallery.core.common.DataStoreManager
 import com.grow.gallery.core.common.openMediaManageSettings
+import com.grow.gallery.core.common.toFormattedSize
 import com.grow.gallery.core.designsystem.AppTheme
 import com.grow.gallery.core.media.MediaRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -73,20 +75,25 @@ class SettingsViewModel @Inject constructor(
 
     fun cycleTheme() {
         viewModelScope.launch {
-            val current = dataStoreManager.appTheme.first()
-            val next = when (current) {
-                AppTheme.SYSTEM -> AppTheme.LIGHT
-                AppTheme.LIGHT -> AppTheme.DARK
-                AppTheme.DARK -> AppTheme.SYSTEM
+            dataStoreManager.dataStore.edit { prefs ->
+                val currentName = prefs[DataStoreManager.KEY_THEME_PUBLIC] ?: AppTheme.SYSTEM.name
+                val current = runCatching { AppTheme.valueOf(currentName) }.getOrDefault(AppTheme.SYSTEM)
+                val next = when (current) {
+                    AppTheme.SYSTEM -> AppTheme.LIGHT
+                    AppTheme.LIGHT -> AppTheme.DARK
+                    AppTheme.DARK -> AppTheme.SYSTEM
+                }
+                prefs[DataStoreManager.KEY_THEME_PUBLIC] = next.name
             }
-            dataStoreManager.setTheme(next)
         }
     }
 
     fun cycleGridSize() {
         viewModelScope.launch {
-            val current = dataStoreManager.gridSize.first()
-            dataStoreManager.setGridSize(if (current >= 4) 2 else current + 1)
+            dataStoreManager.dataStore.edit { prefs ->
+                val current = prefs[DataStoreManager.KEY_GRID_SIZE_PUBLIC] ?: 3
+                prefs[DataStoreManager.KEY_GRID_SIZE_PUBLIC] = if (current >= 4) 2 else current + 1
+            }
         }
     }
 
@@ -116,7 +123,10 @@ class SettingsViewModel @Inject constructor(
             data = Uri.parse("mailto:")
             putExtra(Intent.EXTRA_EMAIL, arrayOf("support@galleryapp.dev"))
             putExtra(Intent.EXTRA_SUBJECT, "Gallery App Feedback")
-            putExtra(Intent.EXTRA_TEXT, "Android version: ${android.os.Build.VERSION.RELEASE}\nApp version: ${context.packageName}\n\n")
+            putExtra(
+                Intent.EXTRA_TEXT,
+                "Android version: ${android.os.Build.VERSION.RELEASE}\nApp version: ${BuildConfig.VERSION_NAME}\n\n",
+            )
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         try {
@@ -130,12 +140,5 @@ class SettingsViewModel @Inject constructor(
         AppTheme.SYSTEM -> "Auto (System)"
         AppTheme.LIGHT -> "Always Light"
         AppTheme.DARK -> "Always Dark"
-    }
-
-    private fun Long.toFormattedSize(): String = when {
-        this >= 1_000_000_000L -> "%.1f GB".format(this / 1_000_000_000.0)
-        this >= 1_000_000L -> "%.1f MB".format(this / 1_000_000.0)
-        this >= 1_000L -> "%.0f KB".format(this / 1_000.0)
-        else -> "$this B"
     }
 }

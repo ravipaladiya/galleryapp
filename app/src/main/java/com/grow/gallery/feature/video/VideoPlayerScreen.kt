@@ -7,9 +7,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -40,7 +42,7 @@ fun VideoPlayerScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showControls by remember { mutableStateOf(true) }
-    var isMuted by remember { mutableStateOf(false) }
+    var isMuted by rememberSaveable { mutableStateOf(false) }
     var isPlaying by remember { mutableStateOf(false) }
 
     LaunchedEffect(mediaId) { viewModel.loadVideo(mediaId) }
@@ -50,12 +52,11 @@ fun VideoPlayerScreen(
             .setSeekBackIncrementMs(10_000L)
             .setSeekForwardIncrementMs(10_000L)
             .build().apply {
-                playWhenReady = true
+                playWhenReady = false  // user taps Play to start
                 repeatMode = Player.REPEAT_MODE_OFF
             }
     }
 
-    // Sync isPlaying state with player via listener
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -70,24 +71,23 @@ fun VideoPlayerScreen(
         uiState.videoUri?.let { uri ->
             exoPlayer.setMediaItem(Media3Item.fromUri(uri))
             exoPlayer.prepare()
+            exoPlayer.volume = if (isMuted) 0f else 1f
         }
     }
 
-    // Auto-hide controls after 3 seconds
-    LaunchedEffect(showControls) {
+    // Auto-hide controls after 3 seconds while playing
+    LaunchedEffect(showControls, isPlaying) {
         if (showControls && isPlaying) {
             delay(3000)
             showControls = false
         }
     }
 
-    // Pause when backgrounded, resume on foreground, release on disposal
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, exoPlayer) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> exoPlayer.pause()
-                Lifecycle.Event.ON_RESUME -> { /* let user resume manually */ }
                 else -> {}
             }
         }
@@ -115,10 +115,10 @@ fun VideoPlayerScreen(
                     )
                 }
             },
+            onRelease = { playerView -> playerView.player = null },
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Top controls
         AnimatedVisibility(
             visible = showControls,
             enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { -it },
@@ -138,7 +138,7 @@ fun VideoPlayerScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = onNavigateUp) {
-                        Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.White)
                     }
                     Text(
                         text = uiState.displayName,
@@ -163,7 +163,6 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Center play/pause controls
         AnimatedVisibility(
             visible = showControls,
             enter = fadeIn(tween(200)),
@@ -202,7 +201,6 @@ fun VideoPlayerScreen(
             }
         }
 
-        // Bottom seek bar
         AnimatedVisibility(
             visible = showControls,
             enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { it },
@@ -211,6 +209,7 @@ fun VideoPlayerScreen(
         ) {
             VideoSeekBar(
                 player = exoPlayer,
+                isPlaying = isPlaying,
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Brand.ViewerControlBg)
@@ -222,17 +221,25 @@ fun VideoPlayerScreen(
 }
 
 @Composable
-private fun VideoSeekBar(player: ExoPlayer, modifier: Modifier = Modifier) {
+private fun VideoSeekBar(
+    player: ExoPlayer,
+    isPlaying: Boolean,
+    modifier: Modifier = Modifier,
+) {
     var progress by remember { mutableStateOf(0f) }
     var duration by remember { mutableStateOf(0L) }
+    var isDragging by remember { mutableStateOf(false) }
 
-    LaunchedEffect(player) {
+    LaunchedEffect(player, isPlaying) {
         while (true) {
-            progress = if (player.duration > 0) {
-                player.currentPosition.toFloat() / player.duration
-            } else 0f
-            duration = player.duration.coerceAtLeast(0L)
-            delay(500)
+            if (!isDragging) {
+                progress = if (player.duration > 0) {
+                    player.currentPosition.toFloat() / player.duration
+                } else 0f
+                duration = player.duration.coerceAtLeast(0L)
+            }
+            // Poll only when playing; when paused use a slower refresh
+            delay(if (isPlaying) 200L else 1000L)
         }
     }
 
@@ -240,7 +247,12 @@ private fun VideoSeekBar(player: ExoPlayer, modifier: Modifier = Modifier) {
         Slider(
             value = progress,
             onValueChange = { newProgress ->
-                player.seekTo((newProgress * player.duration).toLong())
+                isDragging = true
+                progress = newProgress
+            },
+            onValueChangeFinished = {
+                player.seekTo((progress * player.duration).toLong())
+                isDragging = false
             },
             colors = SliderDefaults.colors(
                 thumbColor = Color.White,

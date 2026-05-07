@@ -41,21 +41,19 @@ class SearchViewModel @Inject constructor(
 
     fun onQueryChange(query: String) {
         searchJob?.cancel()
-        if (query.isBlank()) {
+        val trimmed = query.trim()
+        if (trimmed.isBlank()) {
             _uiState.update { it.copy(query = query, allResults = emptyList(), results = emptyList(), isLoading = false) }
             return
         }
-        // Set isLoading immediately so the UI shows a spinner instead of the empty-state during debounce
         _uiState.update { it.copy(query = query, isLoading = true) }
         searchJob = viewModelScope.launch {
             delay(300)
             try {
-                val results = mediaRepository.searchMedia(query)
+                val results = mediaRepository.searchMedia(trimmed)
                 val filtered = applyFilter(results, _uiState.value.filter)
                 _uiState.update { it.copy(allResults = results, results = filtered, isLoading = false) }
-                // Save every query the user typed, regardless of result count — failed searches
-                // are the ones they'll want to retry next time.
-                dataStoreManager.addRecentSearch(query.trim())
+                // Do NOT save recent here — only save when user commits (onSearch / result tap)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -64,8 +62,15 @@ class SearchViewModel @Inject constructor(
         }
     }
 
+    /** Called when the user presses the Search key on the keyboard or taps a result. */
+    fun commitSearch() {
+        val query = _uiState.value.query.trim()
+        if (query.isNotBlank()) {
+            viewModelScope.launch { dataStoreManager.addRecentSearch(query) }
+        }
+    }
+
     fun setFilter(filter: MediaFilter) {
-        // Cancel any in-flight search so it cannot overwrite results with the stale filter it captured
         searchJob?.cancel()
         val cached = _uiState.value.allResults
         _uiState.update { it.copy(filter = filter, results = applyFilter(cached, filter)) }

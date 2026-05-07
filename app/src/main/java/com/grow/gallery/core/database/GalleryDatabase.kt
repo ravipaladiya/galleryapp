@@ -85,10 +85,31 @@ interface VaultDao {
     suspend fun getCount(): Int
 }
 
+data class CustomAlbumWithCount(
+    val id: Long,
+    val name: String,
+    val createdAt: Long,
+    val coverMediaId: Long?,
+    val mediaCount: Int,
+)
+
 @Dao
 interface AlbumDao {
     @Query("SELECT * FROM custom_albums ORDER BY createdAt DESC")
     suspend fun getAllAlbums(): List<CustomAlbum>
+
+    @Query("""
+        SELECT ca.id, ca.name, ca.createdAt, ca.coverMediaId,
+               COUNT(am.mediaId) AS mediaCount
+        FROM custom_albums ca
+        LEFT JOIN album_media am ON ca.id = am.albumId
+        GROUP BY ca.id
+        ORDER BY ca.createdAt DESC
+    """)
+    suspend fun getAlbumsWithCounts(): List<CustomAlbumWithCount>
+
+    @Query("SELECT COUNT(*) FROM custom_albums WHERE LOWER(name) = LOWER(:name)")
+    suspend fun countByName(name: String): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAlbum(album: CustomAlbum): Long

@@ -8,6 +8,7 @@ import com.grow.gallery.core.media.MediaQuery
 import com.grow.gallery.core.media.MediaRepository
 import com.grow.gallery.core.media.SortOrder
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -18,6 +19,9 @@ data class AlbumDetailUiState(
     val showSortSheet: Boolean = false,
     val isLoading: Boolean = true,
     val error: String? = null,
+    val snackbarMessage: String? = null,
+    val selectedItems: Set<Long> = emptySet(),
+    val isSelectionMode: Boolean = false,
 )
 
 @HiltViewModel
@@ -30,6 +34,7 @@ class AlbumDetailViewModel @Inject constructor(
     val uiState: StateFlow<AlbumDetailUiState> = _uiState.asStateFlow()
 
     private var currentAlbumId: Long = Long.MIN_VALUE
+    private var reloadJob: Job? = null
 
     fun loadAlbumMedia(albumId: Long) {
         currentAlbumId = albumId
@@ -46,31 +51,53 @@ class AlbumDetailViewModel @Inject constructor(
 
     private fun reload() {
         if (currentAlbumId == Long.MIN_VALUE) return
-        viewModelScope.launch {
+        reloadJob?.cancel()
+        reloadJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
+                val sortOrder = _uiState.value.sortOrder
                 val items = if (currentAlbumId < 0) {
-                    // Custom album — look up media IDs from the join table.
-                    // AlbumsViewModel stores custom album id as -custom.id so the real DB id is:
                     val dbAlbumId = -currentAlbumId
                     val mediaIds = albumDao.getMediaIdsForAlbum(dbAlbumId).toSet()
                     val loaded = mediaRepository.loadMediaByIds(mediaIds)
-                    when (_uiState.value.sortOrder) {
+                    when (sortOrder) {
                         SortOrder.NEWEST -> loaded.sortedByDescending { it.dateTaken ?: it.dateAdded }
                         SortOrder.OLDEST -> loaded.sortedBy { it.dateTaken ?: it.dateAdded }
                         SortOrder.SIZE_DESC -> loaded.sortedByDescending { it.size }
                         SortOrder.SIZE_ASC -> loaded.sortedBy { it.size }
                     }
                 } else {
-                    // System album — query by MediaStore bucket ID.
-                    val query = MediaQuery(albumId = currentAlbumId, sortOrder = _uiState.value.sortOrder)
+                    val query = MediaQuery(albumId = currentAlbumId, sortOrder = sortOrder)
                     val groups = mediaRepository.loadMedia(query)
                     groups.flatMap { it.items }
                 }
                 _uiState.update { it.copy(items = items, isLoading = false) }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = e.message) }
+                _uiState.update {
+                    it.copy(isLoading = false, snackbarMessage = e.message ?: "Failed to load album")
+                }
             }
         }
+    }
+
+    fun toggleSelection(mediaId: Long) {
+        _uiState.update { state ->
+            val newSel = state.selectedItems.toMutableSet().also {
+                if (it.contains(mediaId)) it.remove(mediaId) else it.add(mediaId)
+            }
+            state.copy(selectedItems = newSel, isSelectionMode = newSel.isNotEmpty())
+        }
+    }
+
+    fun enterSelectionMode(mediaId: Long) {
+        _uiState.update { it.copy(selectedItems = setOf(mediaId), isSelectionMode = true) }
+    }
+
+    fun exitSelectionMode() {
+        _uiState.update { it.copy(selectedItems = emptySet(), isSelectionMode = false) }
+    }
+
+    fun onSnackbarShown() {
+        _uiState.update { it.copy(snackbarMessage = null) }
     }
 }

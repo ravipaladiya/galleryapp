@@ -305,13 +305,13 @@ class MediaRepository @Inject constructor(
     }
 
     /**
-     * On Android R+ (API 30+): returns a PendingIntent the screen must launch via
-     * StartIntentSenderForResult — the system shows a confirmation dialog.
+     * On Android R+ (API 30+): moves items to MediaStore trash (30-day recovery window)
+     * and returns a PendingIntent the screen must launch via StartIntentSenderForResult.
      * On older devices: deletes directly and returns null.
      */
     suspend fun prepareDelete(items: List<MediaItem>): PendingIntent? = withContext(Dispatchers.IO) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            MediaStore.createDeleteRequest(contentResolver, items.map { it.uri })
+            MediaStore.createTrashRequest(contentResolver, items.map { it.uri }, true)
         } else {
             items.forEach { contentResolver.delete(it.uri, null, null) }
             null

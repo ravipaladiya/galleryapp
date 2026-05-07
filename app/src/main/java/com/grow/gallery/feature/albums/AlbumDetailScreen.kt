@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,8 +29,16 @@ fun AlbumDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(albumId) { viewModel.loadAlbumMedia(albumId) }
+
+    LaunchedEffect(uiState.snackbarMessage) {
+        uiState.snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.onSnackbarShown()
+        }
+    }
 
     if (uiState.showSortSheet) {
         SortBottomSheet(
@@ -41,32 +50,49 @@ fun AlbumDetailScreen(
 
     Scaffold(
         topBar = {
-            LargeTopAppBar(
-                title = { Text(albumName) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateUp) {
-                        Icon(Icons.Default.ArrowBack, "Back")
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { onOpenSlideshow(albumId) },
-                        enabled = uiState.items.isNotEmpty(),
-                    ) {
-                        Icon(Icons.Default.PlayCircle, "Slideshow")
-                    }
-                    IconButton(onClick = viewModel::showSortSheet) {
-                        Icon(Icons.Default.FilterList, "Sort")
-                    }
-                },
-                scrollBehavior = scrollBehavior,
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
+            if (uiState.isSelectionMode) {
+                TopAppBar(
+                    title = { Text("${uiState.selectedItems.size} selected") },
+                    navigationIcon = {
+                        IconButton(onClick = viewModel::exitSelectionMode) {
+                            Icon(Icons.Default.Close, "Cancel selection")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { /* share selected */ }) {
+                            Icon(Icons.Default.Share, "Share")
+                        }
+                    },
+                )
+            } else {
+                LargeTopAppBar(
+                    title = { Text(albumName) },
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateUp) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = { onOpenSlideshow(albumId) },
+                            enabled = uiState.items.isNotEmpty(),
+                        ) {
+                            Icon(Icons.Default.PlayCircle, "Slideshow")
+                        }
+                        IconButton(onClick = viewModel::showSortSheet) {
+                            Icon(Icons.Default.FilterList, "Sort")
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                    colors = TopAppBarDefaults.largeTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                    ),
+                )
+            }
         },
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { paddingValues ->
         when {
             uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
@@ -85,15 +111,17 @@ fun AlbumDetailScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                 ) {
                     items(items = uiState.items, key = { it.id }) { item ->
                         MediaGridItem(
                             item = item,
-                            isSelected = false,
-                            isSelectionMode = false,
-                            onClick = { onOpenViewer(item.id, item.isVideo) },
-                            onLongClick = {},
+                            isSelected = item.id in uiState.selectedItems,
+                            isSelectionMode = uiState.isSelectionMode,
+                            onClick = {
+                                if (uiState.isSelectionMode) viewModel.toggleSelection(item.id)
+                                else onOpenViewer(item.id, item.isVideo)
+                            },
+                            onLongClick = { viewModel.enterSelectionMode(item.id) },
                         )
                     }
                 }

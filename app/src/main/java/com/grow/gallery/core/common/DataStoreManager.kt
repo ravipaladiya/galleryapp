@@ -19,11 +19,13 @@ private val Context.appDataStore: DataStore<Preferences> by preferencesDataStore
 class DataStoreManager @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
-    private val dataStore = context.appDataStore
+    val dataStore = context.appDataStore
 
     companion object {
-        private val KEY_THEME = stringPreferencesKey("app_theme")
-        private val KEY_GRID_SIZE = intPreferencesKey("grid_size")
+        val KEY_THEME_PUBLIC = stringPreferencesKey("app_theme")
+        val KEY_GRID_SIZE_PUBLIC = intPreferencesKey("grid_size")
+        private val KEY_THEME = KEY_THEME_PUBLIC
+        private val KEY_GRID_SIZE = KEY_GRID_SIZE_PUBLIC
         private val KEY_ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         private val KEY_SORT_ORDER = stringPreferencesKey("sort_order")
         private val KEY_HIDE_SCREENSHOTS = booleanPreferencesKey("hide_screenshots")
@@ -34,6 +36,7 @@ class DataStoreManager @Inject constructor(
         private val KEY_APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled_settings")
         private val KEY_APP_LOCK_BIOMETRIC = booleanPreferencesKey("app_lock_biometric")
         private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches")
+        private val KEY_IS_PREMIUM = booleanPreferencesKey("is_premium_cached")
         // ASCII Unit Separator (U+001F) — cannot be typed by users, no collision risk
         private const val RECENT_SEARCHES_DELIMITER = ""
         private const val MAX_RECENT_SEARCHES = 10
@@ -58,6 +61,8 @@ class DataStoreManager @Inject constructor(
     val backupEnabled: Flow<Boolean> = dataStore.data.map { it[KEY_BACKUP_ENABLED] ?: false }
     val appLockEnabled: Flow<Boolean> = dataStore.data.map { it[KEY_APP_LOCK_ENABLED] ?: false }
     val appLockBiometric: Flow<Boolean> = dataStore.data.map { it[KEY_APP_LOCK_BIOMETRIC] ?: false }
+    val isPremiumCached: Flow<Boolean> = dataStore.data.map { it[KEY_IS_PREMIUM] ?: false }
+
     val recentSearches: Flow<List<String>> = dataStore.data.map { prefs ->
         val raw = prefs[KEY_RECENT_SEARCHES] ?: return@map emptyList()
         // Support both old "||" delimiter (migration) and new "" delimiter
@@ -130,5 +135,9 @@ class DataStoreManager @Inject constructor(
 
     suspend fun clearRecentSearches() {
         dataStore.edit { it.remove(KEY_RECENT_SEARCHES) }
+    }
+
+    suspend fun setIsPremiumCached(premium: Boolean) {
+        dataStore.edit { it[KEY_IS_PREMIUM] = premium }
     }
 }

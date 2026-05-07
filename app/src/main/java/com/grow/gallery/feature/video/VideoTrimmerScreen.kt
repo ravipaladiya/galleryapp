@@ -47,11 +47,12 @@ fun VideoTrimmerScreen(
         }
     }
 
-    // Seek preview to trimStart when slider moves
+    // Seek preview when trim handles move
     LaunchedEffect(uiState.trimStart) {
-        if (exoPlayer.duration > 0) {
-            exoPlayer.seekTo(uiState.trimStart)
-        }
+        if (exoPlayer.duration > 0) exoPlayer.seekTo(uiState.trimStart)
+    }
+    LaunchedEffect(uiState.trimEnd) {
+        if (exoPlayer.duration > 0) exoPlayer.seekTo(uiState.trimEnd)
     }
 
     DisposableEffect(Unit) { onDispose { exoPlayer.release() } }
@@ -131,6 +132,7 @@ fun VideoTrimmerScreen(
                             )
                         }
                     },
+                    onRelease = { playerView -> playerView.player = null },
                     modifier = Modifier.fillMaxSize(),
                 )
             }

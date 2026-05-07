@@ -6,7 +6,7 @@ lifecycle = "2.8.7"
 activityCompose = "1.9.3"
 composeBom = "2024.12.01"
 navigation = "2.8.5"
-hilt = "2.52"
+hilt = "2.53"
 hiltNavigationCompose = "1.2.0"
 room = "2.6.1"
 datastore = "1.1.1"
@@ -24,6 +24,7 @@ splashscreen = "1.0.1"
 paging = "3.3.5"
 pagingCompose = "3.3.5"
 permissionsCompose = "0.36.0"
+billing = "7.1.1"
 
 [libraries]
 core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -77,6 +78,7 @@ paging-compose = { group = "androidx.paging", name = "paging-compose", version.r
 
 accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanist" }
 accompanist-systemuicontroller = { group = "com.google.accompanist", name = "accompanist-systemuicontroller", version.ref = "accompanist" }
+billing = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

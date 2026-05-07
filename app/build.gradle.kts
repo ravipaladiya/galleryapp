@@ -21,6 +21,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release signing reads from CI env vars; falls back gracefully for local debug builds.
+    // Required CI secrets: KEYSTORE_BASE64, KEY_ALIAS, KEY_PASSWORD, STORE_PASSWORD
+    signingConfigs {
+        val keystoreBase64 = System.getenv("KEYSTORE_BASE64")
+        if (keystoreBase64 != null) {
+            create("release") {
+                val keystoreFile = rootProject.file("release.keystore")
+                if (!keystoreFile.exists()) {
+                    val decoded = java.util.Base64.getDecoder().decode(keystoreBase64)
+                    keystoreFile.writeBytes(decoded)
+                }
+                storeFile = keystoreFile
+                storePassword = System.getenv("STORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("KEY_ALIAS") ?: ""
+                keyPassword = System.getenv("KEY_PASSWORD") ?: ""
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -29,6 +48,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val releaseSigning = signingConfigs.findByName("release")
+            if (releaseSigning != null) {
+                signingConfig = releaseSigning
+            }
         }
         debug {
             isMinifyEnabled = false
@@ -113,4 +136,6 @@ dependencies {
 
     implementation(libs.accompanist.permissions)
     implementation(libs.accompanist.systemuicontroller)
+
+    implementation(libs.billing)
 }
