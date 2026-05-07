@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -165,8 +166,15 @@ fun SearchScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
                     )
+                    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+                    val columns = when {
+                        screenWidthDp >= 840 -> 8
+                        screenWidthDp >= 600 -> 5
+                        else -> 3
+                    }
                     LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
+                        columns = GridCells.Fixed(columns),
+                        state = rememberLazyGridState(),
                         contentPadding = PaddingValues(
                             start = Spacing.xs,
                             end = Spacing.xs,

@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -276,8 +277,13 @@ private fun MediaTimeline(
     selectionMode: Boolean = false,
     gridSize: Int = 3,
 ) {
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val columns = adaptiveColumnCount(gridSize, screenWidthDp)
+    val gridState = rememberLazyGridState()
+
     LazyVerticalGrid(
-        columns = GridCells.Fixed(gridSize.coerceIn(2, 5)),
+        columns = GridCells.Fixed(columns),
+        state = gridState,
         contentPadding = PaddingValues(
             top = contentPadding.calculateTopPadding(),
             bottom = contentPadding.calculateBottomPadding() + if (selectionMode) 80.dp else 16.dp,
@@ -306,6 +312,24 @@ private fun MediaTimeline(
                 )
             }
         }
+    }
+}
+
+/**
+ * Returns the effective column count, scaling up the user preference for larger screens
+ * so tablets and foldables get a denser grid rather than oversized cells.
+ *
+ * Breakpoints align with Material3 window-size class thresholds:
+ *  - Compact  < 600 dp  → phone portrait
+ *  - Medium  600–839 dp → small tablet / foldable unfolded / phone landscape
+ *  - Expanded ≥ 840 dp  → large tablet / desktop
+ */
+private fun adaptiveColumnCount(userGridSize: Int, screenWidthDp: Int): Int {
+    val base = userGridSize.coerceIn(2, 5)
+    return when {
+        screenWidthDp >= 840 -> (base * 2).coerceIn(4, 10)
+        screenWidthDp >= 600 -> ((base * 1.5f).toInt()).coerceIn(3, 7)
+        else -> base
     }
 }
 

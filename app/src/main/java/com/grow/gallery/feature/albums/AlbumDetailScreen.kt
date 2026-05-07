@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -117,8 +118,15 @@ fun AlbumDetailScreen(
                 modifier = Modifier.padding(paddingValues),
             )
             else -> {
+                val screenWidthDp = LocalConfiguration.current.screenWidthDp
+                val columns = when {
+                    screenWidthDp >= 840 -> 8
+                    screenWidthDp >= 600 -> 5
+                    else -> 3
+                }
                 LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
+                    columns = GridCells.Fixed(columns),
+                    state = rememberLazyGridState(),
                     contentPadding = PaddingValues(
                         top = paddingValues.calculateTopPadding(),
                         bottom = paddingValues.calculateBottomPadding() + 16.dp,

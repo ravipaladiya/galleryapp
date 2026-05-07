@@ -27,11 +27,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.memory.MemoryCache
+import coil.request.CachePolicy
 import coil.request.ImageRequest
+import coil.size.Precision
 import com.grow.gallery.core.designsystem.Brand
 import com.grow.gallery.core.designsystem.ShapeMediaItem
 import com.grow.gallery.core.media.MediaItem
@@ -51,6 +55,7 @@ fun MediaGridItem(
         animationSpec = tween(150),
         label = "itemScale",
     )
+    val placeholder = remember { ColorPainter(Color(0xFF1C1C1C)) }
 
     Box(
         modifier = modifier
@@ -69,10 +74,16 @@ fun MediaGridItem(
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
                 .data(item.thumbnailUri ?: item.uri)
-                .crossfade(true)
-                .size(320)
+                .memoryCacheKey(MemoryCache.Key("media_${item.id}"))
+                .diskCacheKey("media_${item.id}")
+                .precision(Precision.INEXACT)
+                .memoryCachePolicy(CachePolicy.ENABLED)
+                .diskCachePolicy(CachePolicy.ENABLED)
+                .allowHardware(true)
                 .build(),
-            contentDescription = item.displayName,
+            placeholder = placeholder,
+            error = placeholder,
+            contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
