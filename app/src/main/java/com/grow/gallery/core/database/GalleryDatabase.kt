@@ -2,7 +2,10 @@ package com.grow.gallery.core.database
 
 import androidx.room.*
 
-@Entity(tableName = "trash_items")
+@Entity(
+    tableName = "trash_items",
+    indices = [Index("expiresAt")],
+)
 data class TrashItem(
     @PrimaryKey val mediaId: Long,
     val uri: String,
@@ -15,7 +18,10 @@ data class TrashItem(
     val thumbnailPath: String? = null,
 )
 
-@Entity(tableName = "vault_items")
+@Entity(
+    tableName = "vault_items",
+    indices = [Index("addedAt")],
+)
 data class VaultItem(
     @PrimaryKey val mediaId: Long,
     val encryptedUri: String,
@@ -132,7 +138,7 @@ interface AlbumDao {
 
 @Database(
     entities = [TrashItem::class, VaultItem::class, CustomAlbum::class, AlbumMediaCrossRef::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class GalleryDatabase : RoomDatabase() {

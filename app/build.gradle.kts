@@ -21,6 +21,7 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "SUPPORT_EMAIL", "\"${System.getenv("SUPPORT_EMAIL") ?: "support@grow-gallery.app"}\"")
     }
 
     // Release signing reads from CI env vars; falls back gracefully for local debug builds.
@@ -140,4 +141,9 @@ dependencies {
     implementation(libs.accompanist.systemuicontroller)
 
     implementation(libs.billing)
+
+    // OSMDroid map — BSD-2 license, OpenStreetMap tiles, no API key required
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
+    // ExifInterface for reading GPS coordinates from photo metadata
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 }

@@ -10,9 +10,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.grow.gallery.core.common.shareMultipleMedia
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 import com.grow.gallery.core.media.SortOrder
@@ -30,6 +32,7 @@ fun AlbumDetailScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     LaunchedEffect(albumId) { viewModel.loadAlbumMedia(albumId) }
 
@@ -37,6 +40,14 @@ fun AlbumDetailScreen(
         uiState.snackbarMessage?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.onSnackbarShown()
+        }
+    }
+
+    // Trigger system share sheet when shareUris is set
+    LaunchedEffect(uiState.shareUris) {
+        uiState.shareUris?.takeIf { it.isNotEmpty() }?.let { uris ->
+            context.shareMultipleMedia(uris)
+            viewModel.onShareHandled()
         }
     }
 
@@ -59,8 +70,11 @@ fun AlbumDetailScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { /* share selected */ }) {
-                            Icon(Icons.Default.Share, "Share")
+                        IconButton(
+                            onClick = viewModel::prepareShare,
+                            enabled = uiState.selectedItems.isNotEmpty(),
+                        ) {
+                            Icon(Icons.Default.Share, "Share selected")
                         }
                     },
                 )

@@ -120,13 +120,15 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun sendFeedback() {
+        val supportEmail = BuildConfig.SUPPORT_EMAIL.ifBlank { "support@grow-gallery.app" }
+        val androidVersion = android.os.Build.VERSION.RELEASE ?: "unknown"
         val intent = Intent(Intent.ACTION_SENDTO).apply {
             data = Uri.parse("mailto:")
-            putExtra(Intent.EXTRA_EMAIL, arrayOf("support@galleryapp.dev"))
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(supportEmail))
             putExtra(Intent.EXTRA_SUBJECT, "Gallery App Feedback")
             putExtra(
                 Intent.EXTRA_TEXT,
-                "Android version: ${android.os.Build.VERSION.RELEASE}\nApp version: ${BuildConfig.VERSION_NAME}\n\n",
+                "Android version: $androidVersion\nApp version: ${BuildConfig.VERSION_NAME}\n\n",
             )
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

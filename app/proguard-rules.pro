@@ -34,3 +34,7 @@
 
 # Media3
 -keep class androidx.media3.** { *; }
+
+# OSMDroid
+-keep class org.osmdroid.** { *; }
+-dontwarn org.osmdroid.**

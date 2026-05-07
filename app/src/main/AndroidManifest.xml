@@ -25,8 +25,12 @@
     <!-- Required for modifying other apps' media without per-file prompts (API 31+) -->
     <uses-permission android:name="android.permission.MANAGE_MEDIA" />
 
-    <!-- EXIF location for map view feature -->
+    <!-- EXIF location for map view feature (must also be requested at runtime on Q+) -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+
+    <!-- Internet + network state for OSMDroid tile downloads -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Biometric for vault -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
