@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,10 +50,18 @@ fun ViewerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val snackbarHostState = remember { SnackbarHostState() }
     var showControls by remember { mutableStateOf(true) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showInfoSheet by remember { mutableStateOf(false) }
     var showSetAsSheet by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearError()
+        }
+    }
 
     LaunchedEffect(mediaId) { viewModel.loadMedia(mediaId, isVideo) }
 
@@ -93,6 +102,10 @@ fun ViewerScreen(
         if (!uiState.isLoading && uiState.items.isEmpty()) onNavigateUp()
     }
 
+    androidx.compose.material3.Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = Color.Black,
+    ) { _ ->
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -227,6 +240,8 @@ fun ViewerScreen(
         }
     }
 
+    } // end Scaffold
+
     if (showDeleteDialog) {
         ConfirmDialog(
             title = "Delete?",
@@ -308,16 +323,31 @@ private fun ZoomableImage(
 ) {
     var scale by remember(pageIndex) { mutableStateOf(1f) }
     var offset by remember(pageIndex) { mutableStateOf(Offset.Zero) }
+    var containerW by remember { mutableStateOf(1f) }
+    var containerH by remember { mutableStateOf(1f) }
 
     val transformableState = rememberTransformableState { zoomChange, offsetChange, _ ->
         val newScale = (scale * zoomChange).coerceIn(1f, 5f)
-        val newOffset = if (newScale > 1f) offset + offsetChange else Offset.Zero
+        if (newScale > 1f) {
+            val maxX = (newScale - 1f) * containerW / 2f
+            val maxY = (newScale - 1f) * containerH / 2f
+            val tentative = offset + offsetChange
+            offset = Offset(
+                tentative.x.coerceIn(-maxX, maxX),
+                tentative.y.coerceIn(-maxY, maxY),
+            )
+        } else {
+            offset = Offset.Zero
+        }
         scale = newScale
-        offset = newOffset
     }
 
     Box(
         modifier = modifier
+            .onSizeChanged { size ->
+                containerW = size.width.toFloat()
+                containerH = size.height.toFloat()
+            }
             .transformable(transformableState)
             .pointerInput(pageIndex) {
                 detectTapGestures(
@@ -450,11 +480,6 @@ private fun SetAsSheet(
                 headlineContent = { Text("Wallpaper") },
                 leadingContent = { Icon(Icons.Default.Wallpaper, null) },
                 modifier = Modifier.clickable { onSetAsWallpaper() },
-            )
-            ListItem(
-                headlineContent = { Text("Contact Photo") },
-                leadingContent = { Icon(Icons.Default.Person, null) },
-                modifier = Modifier.clickable { onDismiss() },
             )
         }
     }

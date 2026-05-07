@@ -17,6 +17,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.security.SecureRandom
+import java.util.UUID
 import javax.inject.Inject
 
 data class VaultUiState(
@@ -125,11 +126,11 @@ class VaultViewModel @Inject constructor(
                     val vaultFileName = vaultManager.addToVault(uri, displayName)
                     if (vaultFileName != null) {
                         // Extract numeric ID robustly: "image:1234" → 1234,
-                        // or fall back to timestamp+index to prevent same-millisecond collisions.
+                        // or fall back to a UUID-derived long to prevent collisions entirely.
                         val mediaId = uri.lastPathSegment
                             ?.substringAfterLast(":")
                             ?.toLongOrNull()
-                            ?: (System.currentTimeMillis() * 1000 + index)
+                            ?: UUID.randomUUID().mostSignificantBits
                         vaultDao.insertVaultItem(
                             VaultItem(
                                 mediaId = mediaId,

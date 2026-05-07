@@ -7,11 +7,13 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.grow.gallery.core.media.MediaRepository
@@ -81,7 +83,10 @@ class EditorViewModel @Inject constructor(
     }
 
     fun saveImage() {
-        val uri = _uiState.value.imageUri ?: return
+        val uri = _uiState.value.imageUri ?: run {
+            _uiState.update { it.copy(error = "No photo loaded") }
+            return
+        }
         if (_uiState.value.isProcessing) return
 
         viewModelScope.launch {
@@ -102,7 +107,7 @@ class EditorViewModel @Inject constructor(
 
     private fun applyAndSave(sourceUri: Uri): Uri? {
         val state = _uiState.value
-        var bmp = decodeSampledBitmap(sourceUri, maxDim = 4096) ?: return null
+        var bmp = decodeOrientedBitmap(sourceUri, maxDim = 4096) ?: return null
 
         // Apply crop
         if (state.cropRatio != "Free") {
@@ -202,13 +207,39 @@ class EditorViewModel @Inject constructor(
         return context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opts) }
     }
 
-    /** Builds a combined ColorMatrix for brightness/contrast/saturation + filter preset. */
+    /** Decodes the bitmap and applies EXIF rotation so portrait photos are upright. */
+    private fun decodeOrientedBitmap(uri: Uri, maxDim: Int): Bitmap? {
+        val raw = decodeSampledBitmap(uri, maxDim) ?: return null
+        val degrees = try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                ExifInterface(stream).rotationDegrees
+            } ?: 0
+        } catch (_: Exception) { 0 }
+        if (degrees == 0) return raw
+        val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
+        val rotated = Bitmap.createBitmap(raw, 0, 0, raw.width, raw.height, matrix, true)
+        raw.recycle()
+        return rotated
+    }
+
+    /**
+     * Builds a combined ColorMatrix for brightness/contrast/saturation + filter preset.
+     *
+     * Saturation is computed once by combining the user's slider value with the filter's
+     * inherent saturation offset, so filters like Vivid and Chrome do not double-apply
+     * saturation on top of the user's setting.
+     */
     internal fun buildColorMatrix(state: EditorUiState): ColorMatrix {
         val matrix = ColorMatrix()
 
-        // Saturation
+        // Saturation: combine user setting with filter's saturation contribution in one op
         val satMatrix = ColorMatrix()
-        satMatrix.setSaturation(1f + state.saturation)
+        when (state.filterName) {
+            "B&W" -> satMatrix.setSaturation(0f)  // Always fully desaturate regardless of slider
+            "Vivid" -> satMatrix.setSaturation((1f + state.saturation) * 1.5f)
+            "Chrome" -> satMatrix.setSaturation((1f + state.saturation) * 0.3f)
+            else -> satMatrix.setSaturation(1f + state.saturation)
+        }
         matrix.postConcat(satMatrix)
 
         // Brightness and Contrast combined
@@ -223,24 +254,23 @@ class EditorViewModel @Inject constructor(
         )
         matrix.postConcat(ColorMatrix(bcArray))
 
-        // Filter preset
+        // Filter tonal/color-cast adjustments (saturation already applied above)
         buildFilterMatrix(state.filterName)?.let { matrix.postConcat(it) }
 
         return matrix
     }
 
+    /**
+     * Returns the non-saturation color adjustments for a filter preset.
+     * Saturation is handled separately in [buildColorMatrix] to prevent double-application.
+     */
     private fun buildFilterMatrix(filterName: String): ColorMatrix? = when (filterName) {
-        "Vivid" -> {
-            val m = ColorMatrix()
-            m.setSaturation(1.5f)
-            m.postConcat(ColorMatrix(floatArrayOf(
-                1.1f, 0f, 0f, 0f, 8f,
-                0f, 1.1f, 0f, 0f, 8f,
-                0f, 0f, 1.1f, 0f, 8f,
-                0f, 0f, 0f, 1f, 0f,
-            )))
-            m
-        }
+        "Vivid" -> ColorMatrix(floatArrayOf(
+            1.1f, 0f, 0f, 0f, 8f,
+            0f, 1.1f, 0f, 0f, 8f,
+            0f, 0f, 1.1f, 0f, 8f,
+            0f, 0f, 0f, 1f, 0f,
+        ))
         "Warm" -> ColorMatrix(floatArrayOf(
             1.2f, 0f, 0f, 0f, 20f,
             0f, 1.0f, 0f, 0f, 5f,
@@ -253,24 +283,19 @@ class EditorViewModel @Inject constructor(
             0f, 0f, 1.2f, 0f, 20f,
             0f, 0f, 0f, 1f, 0f,
         ))
-        "B&W" -> ColorMatrix().apply { setSaturation(0f) }
+        "B&W" -> null  // Only saturation needed; handled in buildColorMatrix
         "Fade" -> ColorMatrix(floatArrayOf(
             0.8f, 0f, 0f, 0f, 40f,
             0f, 0.8f, 0f, 0f, 40f,
             0f, 0f, 0.8f, 0f, 40f,
             0f, 0f, 0f, 1f, 0f,
         ))
-        "Chrome" -> {
-            val m = ColorMatrix()
-            m.setSaturation(0.3f)
-            m.postConcat(ColorMatrix(floatArrayOf(
-                1.3f, 0f, 0f, 0f, -20f,
-                0f, 1.2f, 0f, 0f, -10f,
-                0f, 0f, 1.1f, 0f, -5f,
-                0f, 0f, 0f, 1f, 0f,
-            )))
-            m
-        }
+        "Chrome" -> ColorMatrix(floatArrayOf(
+            1.3f, 0f, 0f, 0f, -20f,
+            0f, 1.2f, 0f, 0f, -10f,
+            0f, 0f, 1.1f, 0f, -5f,
+            0f, 0f, 0f, 1f, 0f,
+        ))
         else -> null
     }
 
@@ -300,8 +325,30 @@ class EditorViewModel @Inject constructor(
     /**
      * Unsharp-mask sharpening via a 5-point Laplacian kernel.
      * Runs on a background thread (called from applyAndSave via Dispatchers.IO).
+     *
+     * To prevent OOM on very large images the sharpening is applied to a working copy
+     * capped at 2048px on the longest edge; the result is scaled back up to the original
+     * dimensions before returning.
      */
     private fun applySharpen(src: Bitmap, strength: Float): Bitmap {
+        val maxSharpenDim = 2048
+        val needsScale = src.width > maxSharpenDim || src.height > maxSharpenDim
+        if (needsScale) {
+            val scale = maxSharpenDim.toFloat() / maxOf(src.width, src.height)
+            val small = Bitmap.createScaledBitmap(
+                src, (src.width * scale).toInt().coerceAtLeast(1),
+                (src.height * scale).toInt().coerceAtLeast(1), true,
+            )
+            val sharpened = applySharpenInternal(small, strength)
+            if (small !== src) small.recycle()
+            val upscaled = Bitmap.createScaledBitmap(sharpened, src.width, src.height, true)
+            if (upscaled !== sharpened) sharpened.recycle()
+            return upscaled
+        }
+        return applySharpenInternal(src, strength)
+    }
+
+    private fun applySharpenInternal(src: Bitmap, strength: Float): Bitmap {
         val w = src.width
         val h = src.height
         val pixels = IntArray(w * h)
