@@ -1,5 +1,6 @@
 package com.grow.gallery.feature.premium
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
@@ -65,6 +66,7 @@ fun PremiumScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { paddingValues ->
+        val activity = LocalContext.current as Activity
         if (uiState.isPremium) {
             PremiumActiveContent(
                 modifier = Modifier
@@ -75,7 +77,7 @@ fun PremiumScreen(
             PremiumSubscribeContent(
                 uiState = uiState,
                 paddingValues = paddingValues,
-                onSubscribe = viewModel::subscribe,
+                onSubscribe = { planId -> viewModel.subscribe(activity, planId) },
                 onRestore = viewModel::restorePurchase,
             )
         }

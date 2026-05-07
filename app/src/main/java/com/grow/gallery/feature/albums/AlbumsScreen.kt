@@ -25,6 +25,14 @@ fun AlbumsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showCreateDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(uiState.snackbarMessage) {
+        uiState.snackbarMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.onSnackbarShown()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -42,7 +50,9 @@ fun AlbumsScreen(
                 scrollBehavior = scrollBehavior,
             )
         },
+        // nestedScroll on Scaffold only — LazyVerticalGrid inside forwards deltas automatically
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { paddingValues ->
         when {
             uiState.isLoading -> LoadingScreen(Modifier.padding(paddingValues))
@@ -64,7 +74,6 @@ fun AlbumsScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(Spacing.lg),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.lg),
-                    modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
                 ) {
                     val systemAlbums = uiState.albums.filter { it.isSystemAlbum }
                     val customAlbums = uiState.albums.filter { !it.isSystemAlbum }
@@ -121,10 +130,11 @@ fun CreateAlbumDialog(
         text = {
             OutlinedTextField(
                 value = name,
-                onValueChange = { name = it },
+                onValueChange = { if (it.length <= 64) name = it },
                 label = { Text("Album name") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                supportingText = { Text("${name.length}/64") },
+                modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
             )
         },
         confirmButton = {

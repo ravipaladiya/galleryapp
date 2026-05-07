@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -37,10 +38,14 @@ fun SearchScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    // Only focus on the very first entry into this screen
+    var hasFocused by rememberSaveable { mutableStateOf(false) }
 
-    // Auto-focus the search field when the screen appears
     LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
+        if (!hasFocused) {
+            hasFocused = true
+            focusRequester.requestFocus()
+        }
     }
 
     Scaffold(
@@ -51,23 +56,34 @@ fun SearchScreen(
                     .statusBarsPadding()
                     .padding(bottom = Spacing.xs),
             ) {
-                Text(
-                    "Search",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Search",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(vertical = Spacing.sm),
+                    )
+                    IconButton(onClick = onOpenMapView) {
+                        Icon(Icons.Default.Map, "Map view")
+                    }
+                }
 
                 OutlinedTextField(
                     value = uiState.query,
                     onValueChange = viewModel::onQueryChange,
-                    placeholder = { Text("Search photos, albums, dates…") },
+                    placeholder = { Text("Search photos and albums…") },
                     leadingIcon = { Icon(Icons.Default.Search, "Search") },
                     trailingIcon = {
                         if (uiState.query.isNotBlank()) {
                             IconButton(onClick = {
                                 viewModel.onQueryChange("")
-                                // Restore focus so the keyboard stays open for the next query
                                 focusRequester.requestFocus()
                             }) {
                                 Icon(Icons.Default.Clear, "Clear")
@@ -76,7 +92,10 @@ fun SearchScreen(
                     },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        focusManager.clearFocus()
+                        viewModel.commitSearch()
+                    }),
                     shape = RoundedCornerShape(28.dp),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -111,14 +130,6 @@ fun SearchScreen(
                             } else null,
                         )
                     }
-
-                    item {
-                        AssistChip(
-                            onClick = onOpenMapView,
-                            label = { Text("Map") },
-                            leadingIcon = { Icon(Icons.Default.Map, null, Modifier.size(16.dp)) },
-                        )
-                    }
                 }
             }
         },
@@ -128,7 +139,10 @@ fun SearchScreen(
             uiState.query.isBlank() -> {
                 SearchSuggestions(
                     recentSearches = uiState.recentSearches,
-                    onQuerySelect = viewModel::onQueryChange,
+                    onQuerySelect = { query ->
+                        viewModel.onQueryChange(query)
+                        viewModel.commitSearch()
+                    },
                     onClearRecents = viewModel::clearRecentSearches,
                     onRemoveRecent = viewModel::removeRecentSearch,
                     modifier = Modifier.padding(paddingValues),
@@ -169,7 +183,10 @@ fun SearchScreen(
                                 item = item,
                                 isSelected = false,
                                 isSelectionMode = false,
-                                onClick = { onOpenViewer(item.id, item.isVideo) },
+                                onClick = {
+                                    viewModel.commitSearch()
+                                    onOpenViewer(item.id, item.isVideo)
+                                },
                                 onLongClick = {},
                             )
                         }
@@ -234,7 +251,7 @@ private fun SearchSuggestions(
             )
             Spacer(Modifier.height(Spacing.xl))
             Text(
-                "Search photos, albums, and dates",
+                "Search your gallery",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -242,7 +259,7 @@ private fun SearchSuggestions(
             )
             Spacer(Modifier.height(Spacing.sm))
             Text(
-                "Find your memories by filename, album name, or date.",
+                "Find photos and videos by filename or album name.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,

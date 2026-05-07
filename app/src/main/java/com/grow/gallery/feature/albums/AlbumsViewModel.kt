@@ -15,6 +15,7 @@ data class AlbumsUiState(
     val albums: List<Album> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
+    val snackbarMessage: String? = null,
 )
 
 @HiltViewModel
@@ -33,13 +34,13 @@ class AlbumsViewModel @Inject constructor(
             _uiState.update { it.copy(isLoading = true) }
             try {
                 val systemAlbums = mediaRepository.loadAlbums()
-                val customAlbums = albumDao.getAllAlbums().map { custom ->
-                    val count = albumDao.getMediaCount(custom.id)
+                // Single JOIN query instead of N+1 getMediaCount calls
+                val customAlbums = albumDao.getAlbumsWithCounts().map { row ->
                     Album(
-                        id = -custom.id,
-                        name = custom.name,
+                        id = -row.id,
+                        name = row.name,
                         coverUri = null,
-                        mediaCount = count,
+                        mediaCount = row.mediaCount,
                         isSystemAlbum = false,
                     )
                 }
@@ -53,9 +54,38 @@ class AlbumsViewModel @Inject constructor(
     }
 
     fun createAlbum(name: String) {
-        viewModelScope.launch {
-            albumDao.insertAlbum(CustomAlbum(name = name))
-            loadAlbums()
+        val trimmed = name.trim().filter { it >= ' ' && it != '/' }
+        when {
+            trimmed.isBlank() -> {
+                _uiState.update { it.copy(snackbarMessage = "Album name cannot be empty") }
+                return
+            }
+            trimmed.length > 64 -> {
+                _uiState.update { it.copy(snackbarMessage = "Album name is too long (max 64 characters)") }
+                return
+            }
         }
+        viewModelScope.launch {
+            if (albumDao.countByName(trimmed) > 0) {
+                _uiState.update { it.copy(snackbarMessage = "An album named \"$trimmed\" already exists") }
+                return@launch
+            }
+            val insertedId = albumDao.insertAlbum(CustomAlbum(name = trimmed))
+            // Append to existing list instead of re-querying MediaStore
+            val newAlbum = Album(
+                id = -insertedId,
+                name = trimmed,
+                coverUri = null,
+                mediaCount = 0,
+                isSystemAlbum = false,
+            )
+            _uiState.update { state ->
+                state.copy(albums = state.albums + newAlbum)
+            }
+        }
+    }
+
+    fun onSnackbarShown() {
+        _uiState.update { it.copy(snackbarMessage = null) }
     }
 }

@@ -16,6 +16,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.security.SecureRandom
 import javax.inject.Inject
 
 data class VaultUiState(
@@ -86,7 +87,9 @@ class VaultViewModel @Inject constructor(
     @Volatile private var biometricToken: Long = 0L
 
     fun prepareBiometricChallenge(): Long {
-        biometricToken = System.nanoTime().let { if (it == 0L) -1L else it }
+        var token: Long
+        do { token = SecureRandom().nextLong() } while (token == 0L)
+        biometricToken = token
         return biometricToken
     }
 

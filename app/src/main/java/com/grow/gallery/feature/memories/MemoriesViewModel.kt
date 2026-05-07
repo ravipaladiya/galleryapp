@@ -72,8 +72,9 @@ class MemoriesViewModel @Inject constructor(
                     .filter { it.value.size >= 3 }
                     .map { (monthYear, items) ->
                         val (month, year) = monthYear
-                        // Use numeric month as fallback to avoid blank labels
-                        itemCal.set(Calendar.MONTH, month)
+                        // Clear + reset to avoid day-normalization artifacts (e.g. day=31 + Feb → March)
+                        itemCal.clear()
+                        itemCal.set(year, month, 1)
                         val monthName = itemCal.getDisplayName(Calendar.MONTH, Calendar.LONG, Locale.getDefault())
                             ?.takeIf { it.isNotBlank() }
                             ?: (month + 1).toString()

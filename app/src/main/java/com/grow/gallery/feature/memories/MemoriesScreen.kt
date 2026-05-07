@@ -60,9 +60,10 @@ fun MemoriesScreen(
             LargeTopAppBar(
                 title = { Text("Memories", fontWeight = FontWeight.Bold) },
                 actions = {
+                    val allIds = (uiState.onThisDay + uiState.memories.flatMap { it.items }).map { it.id }
                     IconButton(
-                        onClick = { onOpenSlideshow(emptyList()) },
-                        enabled = true,
+                        onClick = { onOpenSlideshow(allIds) },
+                        enabled = allIds.isNotEmpty(),
                     ) {
                         Icon(Icons.Default.PlayCircle, "Slideshow")
                     }
@@ -97,9 +98,7 @@ fun MemoriesScreen(
                         contentPadding = PaddingValues(
                             bottom = paddingValues.calculateBottomPadding() + 16.dp,
                         ),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .nestedScroll(scrollBehavior.nestedScrollConnection),
+                        modifier = Modifier.fillMaxSize(),
                     ) {
                         if (uiState.onThisDay.isNotEmpty()) {
                             item {
@@ -112,7 +111,7 @@ fun MemoriesScreen(
 
                         items(
                             uiState.memories,
-                            key = { "${it.label}-${it.year}-${it.items.size}" },
+                            key = { "${it.year}-${it.monthIndex}" },
                         ) { memory ->
                             MemoryCard(
                                 memory = memory,

@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
@@ -11,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -25,6 +27,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
@@ -58,6 +63,7 @@ import com.grow.gallery.feature.viewer.ViewerScreen
 import com.grow.gallery.R
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 val bottomNavItems = listOf(
@@ -134,6 +140,7 @@ fun GalleryApp(
     val appLockEnabled by appViewModel.appLockEnabled.collectAsStateWithLifecycle()
     val appLockPinSet by appViewModel.appLockPinSet.collectAsStateWithLifecycle()
     val appLockBiometricEnabled by appViewModel.appLockBiometricEnabled.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     // App-lock gate: true = user has authenticated in this session
     var appUnlocked by remember { mutableStateOf(!appLockEnabled) }
@@ -141,6 +148,17 @@ fun GalleryApp(
     // Re-lock when appLockEnabled turns on
     LaunchedEffect(appLockEnabled) {
         if (appLockEnabled) appUnlocked = false
+    }
+
+    // Re-lock on ON_STOP (user hides app to Recents/Home) so it requires re-auth on resume
+    DisposableEffect(lifecycleOwner, appLockEnabled) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP && appLockEnabled) {
+                appUnlocked = false
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // Show app-lock PIN gate if lock is enabled and session is not yet unlocked
@@ -198,7 +216,7 @@ fun GalleryApp(
     ) { paddingValues ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Splash.route,
+            startDestination = Screen.Home.route,
             modifier = Modifier.padding(bottom = if (showBottomNav) paddingValues.calculateBottomPadding() else 0.dp),
             enterTransition = { fadeIn(tween(250)) + slideInHorizontally(tween(300)) { it / 3 } },
             exitTransition = { fadeOut(tween(200)) },
@@ -228,6 +246,20 @@ fun GalleryApp(
             }
 
             composable(Screen.Home.route) {
+                // While DataStore is still loading, show splash visuals
+                if (onboardingDone == null) {
+                    SplashScreen(onNavigate = { /* recomposition handles routing */ })
+                    return@composable
+                }
+                // First-run: send to onboarding
+                if (onboardingDone == false) {
+                    LaunchedEffect(Unit) {
+                        navController.navigate(Screen.Onboarding.route) {
+                            popUpTo(Screen.Home.route) { inclusive = false }
+                        }
+                    }
+                    return@composable
+                }
                 HomeScreen(
                     onOpenViewer = { mediaId, isVideo ->
                         navController.navigate(Screen.Viewer.createRoute(mediaId, isVideo))
@@ -520,11 +552,15 @@ private fun AppLockGateScreen(
                                 OutlinedButton(
                                     onClick = {
                                         if (key == "⌫") {
-                                            if (pin.isNotEmpty()) pin = pin.dropLast(1)
+                                            if (pin.isNotEmpty()) {
+                                                pin = pin.dropLast(1)
+                                                error = null
+                                            }
                                         } else if (pin.length < 4) {
+                                            error = null
                                             pin += key
                                             if (pin.length == 4) {
-                                                scope.launch {
+                                                scope.launch(Dispatchers.Default) {
                                                     val correct = vaultManager.verifyPin(pin)
                                                     if (correct) {
                                                         onUnlocked()
@@ -569,10 +605,19 @@ private fun AppLockGateScreen(
                         }
                         override fun onAuthenticationFailed() {}
                     }
+                    val biometricManager = BiometricManager.from(activity)
+                    val canAuthStrong = biometricManager.canAuthenticate(
+                        BiometricManager.Authenticators.BIOMETRIC_STRONG
+                    ) == BiometricManager.BIOMETRIC_SUCCESS
+                    if (!canAuthStrong) {
+                        error = "Strong biometric not available on this device"
+                        return@TextButton
+                    }
                     BiometricPrompt(activity, executor, callback).authenticate(
                         BiometricPrompt.PromptInfo.Builder()
                             .setTitle("Unlock Gallery")
                             .setSubtitle("Use biometric to access your gallery")
+                            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
                             .setNegativeButtonText("Use PIN")
                             .build()
                     )

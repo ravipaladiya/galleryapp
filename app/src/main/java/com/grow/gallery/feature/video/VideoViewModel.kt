@@ -70,11 +70,11 @@ class VideoViewModel @Inject constructor(
     }
 
     fun setTrimEnd(ms: Long) {
-        val start = _uiState.value.trimStart
         val duration = _uiState.value.duration
-        // Guard: coerceIn throws if min > max (happens when duration < start+1000 during metadata race)
+        if (duration <= 0L) return  // metadata not loaded yet; avoid coerceIn(min > max) crash
+        val start = _uiState.value.trimStart
         val minEnd = (start + 1000L).coerceAtMost(duration)
-        _uiState.update { it.copy(trimEnd = ms.coerceIn(minEnd, duration.coerceAtLeast(minEnd))) }
+        _uiState.update { it.copy(trimEnd = ms.coerceIn(minEnd, duration)) }
     }
 
     fun exportTrimmedVideo() {
@@ -113,8 +113,10 @@ class VideoViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(isExporting = false, exportSuccess = true, exportProgress = 1f)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                outputUri?.let { context.contentResolver.delete(it, null, null) }
+                throw e
             } catch (e: Exception) {
-                // Remove the orphan IS_PENDING row so it doesn't ghost the user's storage
                 outputUri?.let { context.contentResolver.delete(it, null, null) }
                 _uiState.update {
                     it.copy(isExporting = false, exportError = e.message ?: "Export failed")
