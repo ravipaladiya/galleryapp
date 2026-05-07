@@ -31,6 +31,9 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.grow.gallery.core.database.VaultItem
 import com.grow.gallery.core.designsystem.*
@@ -204,9 +207,19 @@ private fun VaultLockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> Uni
                 TextButton(onClick = {
                     val activity = context as? FragmentActivity ?: return@TextButton
                     val executor = ContextCompat.getMainExecutor(activity)
+                    val token = viewModel.prepareBiometricChallenge()
                     val callback = object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                            viewModel.unlockWithBiometric()
+                            viewModel.unlockWithBiometric(token)
+                        }
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            if (errorCode != BiometricPrompt.ERROR_USER_CANCELED &&
+                                errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
+                                viewModel.onBiometricError(errString.toString())
+                            }
+                        }
+                        override fun onAuthenticationFailed() {
+                            // Handled automatically by the BiometricPrompt UI; no extra action needed
                         }
                     }
                     BiometricPrompt(activity, executor, callback).authenticate(
@@ -232,6 +245,18 @@ private fun VaultUnlockedScreen(viewModel: VaultViewModel, onNavigateUp: () -> U
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var selectedItem by remember { mutableStateOf<VaultItem?>(null) }
+
+    // Auto-lock when the app goes to background (#G-V3)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                viewModel.lock()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val mediaPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia()

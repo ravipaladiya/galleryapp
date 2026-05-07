@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.MediaStore
 import android.provider.Settings
 import java.text.SimpleDateFormat
 import java.util.*
@@ -47,12 +48,13 @@ fun Context.openAppSettings() {
 }
 
 fun Context.openMediaManageSettings() {
-    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+    // ACTION_REQUEST_MANAGE_MEDIA (API 31+) opens the dedicated MANAGE_MEDIA consent screen.
+    // Pre-API-31 falls back to app details (MANAGE_MEDIA doesn't exist there anyway).
+    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        Intent(Settings.ACTION_REQUEST_MANAGE_MEDIA).apply {
             data = Uri.fromParts("package", packageName, null)
         }
     } else {
-        // Pre-API-34: open the app details page where the user can manage permissions
         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", packageName, null)
         }
@@ -60,6 +62,11 @@ fun Context.openMediaManageSettings() {
     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     startActivity(intent)
 }
+
+fun Context.canManageMedia(): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        MediaStore.canManageMedia(this)
+    else false
 
 fun Context.shareMedia(uri: Uri, mimeType: String) {
     val shareIntent = Intent(Intent.ACTION_SEND).apply {

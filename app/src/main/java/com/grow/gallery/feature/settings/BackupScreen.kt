@@ -24,7 +24,7 @@ fun BackupScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     Scaffold(
-        topBar = { GalleryTopBar(title = "Backup & Sync", onNavigateUp = onNavigateUp) },
+        topBar = { GalleryTopBar(title = "Local Export", onNavigateUp = onNavigateUp) },
     ) { paddingValues ->
         LazyColumn(
             contentPadding = PaddingValues(
@@ -44,20 +44,19 @@ fun BackupScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Icon(
-                            if (uiState.backupEnabled) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                            Icons.Default.FolderOpen,
                             null,
-                            tint = if (uiState.backupEnabled) Brand.Blue else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = Brand.Blue,
                             modifier = Modifier.size(48.dp),
                         )
                         Spacer(Modifier.height(Spacing.md))
                         Text(
-                            if (uiState.backupEnabled) "Backup On" else "Backup Off",
+                            "Local Export",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            if (uiState.backupEnabled) "Your photos are being backed up"
-                            else "Enable backup to protect your photos",
+                            "Export copies of your photos to an external folder on this device. No cloud or account required.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -66,7 +65,7 @@ fun BackupScreen(
                             onClick = { viewModel.setBackupEnabled(!uiState.backupEnabled) },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(if (uiState.backupEnabled) "Disable Backup" else "Enable Backup")
+                            Text(if (uiState.backupEnabled) "Disable Auto-Export" else "Enable Auto-Export")
                         }
                     }
                 }
@@ -75,8 +74,8 @@ fun BackupScreen(
             item { SectionHeader("Settings") }
             item {
                 SettingRow(
-                    title = "Wi-Fi Only",
-                    subtitle = "Only backup when connected to Wi-Fi",
+                    title = "Export on Wi-Fi Only",
+                    subtitle = "Only export when connected to Wi-Fi",
                     leading = { Icon(Icons.Default.Wifi, null) },
                     trailing = {
                         Switch(
@@ -84,15 +83,6 @@ fun BackupScreen(
                             onCheckedChange = viewModel::setWifiOnly,
                         )
                     },
-                )
-            }
-            item {
-                SettingRow(
-                    title = "Account",
-                    subtitle = "Not signed in",
-                    leading = { Icon(Icons.Default.AccountCircle, null) },
-                    trailing = { Icon(Icons.Default.ChevronRight, null) },
-                    onClick = { },
                 )
             }
         }

@@ -86,6 +86,6 @@ class PermissionManager @Inject constructor(
     }
 
     fun hasFullAccess(): Boolean = _permissionState.value == MediaPermissionState.GRANTED
-    fun hasAnyAccess(): Boolean = _permissionState.value != MediaPermissionState.DENIED
-            && _permissionState.value != MediaPermissionState.NOT_ASKED
+    fun hasAnyAccess(): Boolean = _permissionState.value == MediaPermissionState.GRANTED ||
+            _permissionState.value == MediaPermissionState.PARTIAL
 }

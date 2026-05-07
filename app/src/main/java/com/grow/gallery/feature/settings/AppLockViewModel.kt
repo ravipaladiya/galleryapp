@@ -29,7 +29,7 @@ class AppLockViewModel @Inject constructor(
         viewModelScope.launch {
             combine(
                 dataStoreManager.appLockEnabled,
-                vaultManager.isBiometricEnabled,
+                dataStoreManager.appLockBiometric,
             ) { appLock, biometric ->
                 _uiState.update { it.copy(appLockEnabled = appLock, biometricEnabled = biometric) }
             }.collect()
@@ -37,13 +37,10 @@ class AppLockViewModel @Inject constructor(
     }
 
     fun setAppLockEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            dataStoreManager.setAppLockEnabled(enabled)
-            if (!enabled) vaultManager.enableBiometric(false)
-        }
+        viewModelScope.launch { dataStoreManager.setAppLockEnabled(enabled) }
     }
 
     fun setBiometricEnabled(enabled: Boolean) {
-        viewModelScope.launch { vaultManager.enableBiometric(enabled) }
+        viewModelScope.launch { dataStoreManager.setAppLockBiometric(enabled) }
     }
 }

@@ -81,11 +81,26 @@ class VaultViewModel @Inject constructor(
     }
 
 
-    fun unlockWithBiometric() {
+    // Challenge token prevents programmatic bypasses; generated fresh each time the lock screen
+    // calls prepareBiometricChallenge() and consumed on first use.
+    @Volatile private var biometricToken: Long = 0L
+
+    fun prepareBiometricChallenge(): Long {
+        biometricToken = System.nanoTime().let { if (it == 0L) -1L else it }
+        return biometricToken
+    }
+
+    fun unlockWithBiometric(token: Long) {
+        if (token == 0L || token != biometricToken) return
+        biometricToken = 0L
         viewModelScope.launch {
             val items = vaultDao.getAllVaultItems()
             _uiState.update { it.copy(isUnlocked = true, vaultItems = items, error = null) }
         }
+    }
+
+    fun onBiometricError(message: String) {
+        _uiState.update { it.copy(error = message) }
     }
 
     fun lock() {
@@ -99,16 +114,22 @@ class VaultViewModel @Inject constructor(
             val importedUris = mutableListOf<Uri>()
             var successCount = 0
 
-            for (uri in uris) {
+            for ((index, uri) in uris.withIndex()) {
                 try {
                     val displayName = getDisplayName(uri) ?: "media_${System.currentTimeMillis()}"
                     val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
 
                     val vaultFileName = vaultManager.addToVault(uri, displayName)
                     if (vaultFileName != null) {
+                        // Extract numeric ID robustly: "image:1234" → 1234,
+                        // or fall back to timestamp+index to prevent same-millisecond collisions.
+                        val mediaId = uri.lastPathSegment
+                            ?.substringAfterLast(":")
+                            ?.toLongOrNull()
+                            ?: (System.currentTimeMillis() * 1000 + index)
                         vaultDao.insertVaultItem(
                             VaultItem(
-                                mediaId = uri.lastPathSegment?.toLongOrNull() ?: System.currentTimeMillis(),
+                                mediaId = mediaId,
                                 encryptedUri = vaultFileName,
                                 displayName = displayName,
                                 mimeType = mimeType,

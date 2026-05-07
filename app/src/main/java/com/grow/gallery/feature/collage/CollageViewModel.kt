@@ -88,7 +88,7 @@ class CollageViewModel @Inject constructor(
                     val result = imageLoader.execute(request)
                     if (result is SuccessResult) {
                         val bm = (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
-                            ?: continue
+                            ?: return@forEachIndexed
                         val left = col * (cellW + gap)
                         val top = row * (cellH + gap)
                         val dst = Rect(left, top, left + cellW, top + cellH)

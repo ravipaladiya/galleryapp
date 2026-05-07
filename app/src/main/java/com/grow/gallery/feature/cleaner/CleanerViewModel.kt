@@ -25,8 +25,9 @@ data class CleanerCategory(
 data class CleanerUiState(
     val phase: CleanerPhase = CleanerPhase.IDLE,
     val categories: List<CleanerCategory> = emptyList(),
-    val totalReclaimable: String = "0 MB",
-    val freedSpace: String = "0 MB",
+    val totalReclaimable: String = "0 B",    // selected items only
+    val totalAllReclaimable: String = "0 B", // ALL items regardless of selection
+    val freedSpace: String = "0 B",
     val deletedCount: Int = 0,
     val pendingDeleteIntent: PendingIntent? = null,
     val pendingDeleteItems: List<MediaItem> = emptyList(),
@@ -82,15 +83,17 @@ class CleanerViewModel @Inject constructor(
                     )
                 }
 
-                val totalBytes = categories.filter { it.isSelected }.sumOf { cat ->
+                val selectedBytes = categories.filter { it.isSelected }.sumOf { cat ->
                     cat.items.sumOf { it.size }
                 }
+                val allBytes = categories.sumOf { cat -> cat.items.sumOf { it.size } }
 
                 _uiState.update {
                     it.copy(
                         phase = CleanerPhase.RESULTS,
                         categories = categories,
-                        totalReclaimable = totalBytes.toFormattedSize(),
+                        totalReclaimable = selectedBytes.toFormattedSize(),
+                        totalAllReclaimable = allBytes.toFormattedSize(),
                     )
                 }
             } catch (e: Exception) {
@@ -109,10 +112,10 @@ class CleanerViewModel @Inject constructor(
             val updated = state.categories.map { cat ->
                 if (cat.name == categoryName) cat.copy(isSelected = selected) else cat
             }
-            val totalBytes = updated.filter { it.isSelected }.sumOf { cat ->
+            val selectedBytes = updated.filter { it.isSelected }.sumOf { cat ->
                 cat.items.sumOf { it.size }
             }
-            state.copy(categories = updated, totalReclaimable = totalBytes.toFormattedSize())
+            state.copy(categories = updated, totalReclaimable = selectedBytes.toFormattedSize())
         }
     }
 
@@ -140,11 +143,11 @@ class CleanerViewModel @Inject constructor(
                 try {
                     val pendingIntent = mediaRepository.prepareDelete(items)
                     if (pendingIntent != null) {
+                        // Keep CLEANING phase until user responds to the system dialog
                         _uiState.update {
                             it.copy(
                                 pendingDeleteIntent = pendingIntent,
                                 pendingDeleteItems = items,
-                                phase = CleanerPhase.RESULTS,
                             )
                         }
                     } else {

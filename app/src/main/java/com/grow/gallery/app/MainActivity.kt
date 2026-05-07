@@ -4,16 +4,25 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.biometric.BiometricPrompt
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -23,6 +32,7 @@ import androidx.navigation.navArgument
 import com.grow.gallery.app.navigation.*
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
+import com.grow.gallery.core.security.VaultManager
 import com.grow.gallery.feature.albums.AlbumsScreen
 import com.grow.gallery.feature.albums.AlbumDetailScreen
 import com.grow.gallery.feature.cleaner.CleanerScreen
@@ -45,7 +55,9 @@ import com.grow.gallery.feature.vault.VaultScreen
 import com.grow.gallery.feature.video.VideoPlayerScreen
 import com.grow.gallery.feature.video.VideoTrimmerScreen
 import com.grow.gallery.feature.viewer.ViewerScreen
+import com.grow.gallery.R
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 val bottomNavItems = listOf(
     BottomNavItem(
@@ -77,29 +89,85 @@ val bottomNavItems = listOf(
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
+    @Inject lateinit var vaultManager: VaultManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        setTheme(R.style.Theme_GalleryApp)
         enableEdgeToEdge()
+
+        // Handle VIEW intents (e.g. "Open with Gallery" from other apps)
+        val viewIntentUri = if (intent?.action == android.content.Intent.ACTION_VIEW) {
+            intent?.data
+        } else null
 
         setContent {
             val appViewModel: AppViewModel = hiltViewModel()
             val appTheme by appViewModel.appTheme.collectAsStateWithLifecycle()
 
             GalleryTheme(appTheme = appTheme) {
-                GalleryApp(appViewModel = appViewModel)
+                GalleryApp(
+                    appViewModel = appViewModel,
+                    vaultManager = vaultManager,
+                    activity = this,
+                    viewIntentUri = viewIntentUri,
+                )
             }
         }
     }
 }
 
 @Composable
-fun GalleryApp(appViewModel: AppViewModel) {
+fun GalleryApp(
+    appViewModel: AppViewModel,
+    vaultManager: VaultManager,
+    activity: MainActivity,
+    viewIntentUri: android.net.Uri? = null,
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
     val onboardingDone by appViewModel.onboardingDone.collectAsStateWithLifecycle()
+    val appLockEnabled by appViewModel.appLockEnabled.collectAsStateWithLifecycle()
+    val appLockPinSet by appViewModel.appLockPinSet.collectAsStateWithLifecycle()
+    val appLockBiometricEnabled by appViewModel.appLockBiometricEnabled.collectAsStateWithLifecycle()
+
+    // App-lock gate: true = user has authenticated in this session
+    var appUnlocked by remember { mutableStateOf(!appLockEnabled) }
+
+    // Re-lock when appLockEnabled turns on
+    LaunchedEffect(appLockEnabled) {
+        if (appLockEnabled) appUnlocked = false
+    }
+
+    // Show app-lock PIN gate if lock is enabled and session is not yet unlocked
+    if (appLockEnabled && !appUnlocked && appLockPinSet) {
+        AppLockGateScreen(
+            biometricEnabled = appLockBiometricEnabled,
+            vaultManager = vaultManager,
+            activity = activity,
+            onUnlocked = { appUnlocked = true },
+        )
+        return
+    }
+
+    // Navigate to Viewer when launched from a VIEW intent (e.g. "Open with Gallery")
+    LaunchedEffect(viewIntentUri) {
+        viewIntentUri ?: return@LaunchedEffect
+        // Wait for the splash → home transition to complete before navigating
+        // by resolving the media ID from the URI via the MediaStore
+        val mimeType = activity.contentResolver.getType(viewIntentUri) ?: ""
+        val isVideo = mimeType.startsWith("video/")
+        // Derive a stable media ID from the URI's last path segment (numeric part)
+        val mediaId = viewIntentUri.lastPathSegment?.substringAfterLast(":")?.toLongOrNull()
+        if (mediaId != null) {
+            navController.navigate(Screen.Viewer.createRoute(mediaId, isVideo)) {
+                popUpTo(Screen.Home.route) { inclusive = false }
+            }
+        }
+    }
 
     val showBottomNav = currentRoute in bottomNavRoutes
 
@@ -116,7 +184,9 @@ fun GalleryApp(appViewModel: AppViewModel) {
                     currentRoute = currentRoute ?: Screen.Home.route,
                     onItemSelected = { item ->
                         navController.navigate(item.route) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            // Use Screen.Home.route rather than startDestinationId (which is Splash)
+                            // to prevent back-navigation landing on the splash screen.
+                            popUpTo(Screen.Home.route) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
                         }
@@ -270,6 +340,7 @@ fun GalleryApp(appViewModel: AppViewModel) {
                 EditorScreen(
                     mediaId = mediaId,
                     onNavigateUp = navController::navigateUp,
+                    onOpenPremium = { navController.navigate(Screen.Premium.route) },
                 )
             }
 
@@ -358,7 +429,157 @@ fun GalleryApp(appViewModel: AppViewModel) {
             composable(Screen.AppLock.route) {
                 AppLockScreen(
                     onNavigateUp = navController::navigateUp,
+                    onSetupPin = { navController.navigate(Screen.Vault.route) },
                 )
+            }
+        }
+    }
+}
+
+/** Gate screen shown on launch when App Lock is enabled and the session is not yet authenticated. */
+@Composable
+private fun AppLockGateScreen(
+    biometricEnabled: Boolean,
+    vaultManager: VaultManager,
+    activity: MainActivity,
+    onUnlocked: () -> Unit,
+) {
+    var pin by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brand.VaultBlueGradient),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(Spacing.xxxl),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .background(Color.White.copy(alpha = 0.15f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Default.Lock, null, tint = Color.White, modifier = Modifier.size(40.dp))
+            }
+            Spacer(Modifier.height(Spacing.xl))
+            Text(
+                "Gallery Locked",
+                style = MaterialTheme.typography.headlineSmall,
+                color = Color.White,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                "Enter your PIN to continue",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.8f),
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(Spacing.xxxl))
+
+            // PIN dots
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.lg)) {
+                repeat(4) { i ->
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .background(
+                                if (i < pin.length) Color.White else Color.White.copy(alpha = 0.3f),
+                                CircleShape,
+                            ),
+                    )
+                }
+            }
+            error?.let { err ->
+                Spacer(Modifier.height(Spacing.md))
+                Text(err, color = Color(0xFFFF6B6B), style = MaterialTheme.typography.bodySmall)
+            }
+            Spacer(Modifier.height(Spacing.xxxl))
+
+            // PIN pad
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+            ) {
+                listOf(
+                    listOf("1", "2", "3"),
+                    listOf("4", "5", "6"),
+                    listOf("7", "8", "9"),
+                    listOf("", "0", "⌫"),
+                ).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xxxl)) {
+                        row.forEach { key ->
+                            if (key.isEmpty()) {
+                                Box(modifier = Modifier.size(64.dp))
+                            } else {
+                                OutlinedButton(
+                                    onClick = {
+                                        if (key == "⌫") {
+                                            if (pin.isNotEmpty()) pin = pin.dropLast(1)
+                                        } else if (pin.length < 4) {
+                                            pin += key
+                                            if (pin.length == 4) {
+                                                scope.launch {
+                                                    val correct = vaultManager.verifyPin(pin)
+                                                    if (correct) {
+                                                        onUnlocked()
+                                                    } else {
+                                                        error = "Incorrect PIN"
+                                                        pin = ""
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.size(64.dp),
+                                    shape = CircleShape,
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.3f)),
+                                ) {
+                                    if (key == "⌫") {
+                                        Icon(Icons.Default.Backspace, "Delete", tint = Color.White, modifier = Modifier.size(20.dp))
+                                    } else {
+                                        Text(key, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Medium)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (biometricEnabled) {
+                Spacer(Modifier.height(Spacing.xl))
+                TextButton(onClick = {
+                    val executor = ContextCompat.getMainExecutor(activity)
+                    val callback = object : BiometricPrompt.AuthenticationCallback() {
+                        override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                            onUnlocked()
+                        }
+                        override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                            if (errorCode != BiometricPrompt.ERROR_USER_CANCELED &&
+                                errorCode != BiometricPrompt.ERROR_NEGATIVE_BUTTON) {
+                                error = errString.toString()
+                            }
+                        }
+                        override fun onAuthenticationFailed() {}
+                    }
+                    BiometricPrompt(activity, executor, callback).authenticate(
+                        BiometricPrompt.PromptInfo.Builder()
+                            .setTitle("Unlock Gallery")
+                            .setSubtitle("Use biometric to access your gallery")
+                            .setNegativeButtonText("Use PIN")
+                            .build()
+                    )
+                }) {
+                    Icon(Icons.Default.Fingerprint, null, tint = Color.White)
+                    Spacer(Modifier.width(Spacing.sm))
+                    Text("Use Biometric", color = Color.White)
+                }
             }
         }
     }
