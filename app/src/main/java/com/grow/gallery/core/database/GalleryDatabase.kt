@@ -42,6 +42,15 @@ data class CustomAlbum(
 @Entity(
     tableName = "album_media",
     primaryKeys = ["albumId", "mediaId"],
+    foreignKeys = [
+        ForeignKey(
+            entity = CustomAlbum::class,
+            parentColumns = ["id"],
+            childColumns = ["albumId"],
+            onDelete = ForeignKey.CASCADE,
+        )
+    ],
+    indices = [Index("albumId")],
 )
 data class AlbumMediaCrossRef(
     val albumId: Long,
@@ -138,7 +147,7 @@ interface AlbumDao {
 
 @Database(
     entities = [TrashItem::class, VaultItem::class, CustomAlbum::class, AlbumMediaCrossRef::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class GalleryDatabase : RoomDatabase() {

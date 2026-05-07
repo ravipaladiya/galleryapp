@@ -85,8 +85,11 @@ class ViewerViewModel @Inject constructor(
                 }
                 _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = item) }
             } else {
-                mediaRepository.deleteMedia(listOf(item))
-                removeItemFromList(item)
+                val result = mediaRepository.deleteMedia(listOf(item))
+                result.onSuccess { removeItemFromList(item) }
+                    .onFailure { e ->
+                        _uiState.update { it.copy(error = "Delete failed: ${e.message}") }
+                    }
             }
         }
     }
@@ -97,6 +100,10 @@ class ViewerViewModel @Inject constructor(
     }
 
     /** Called after the system delete confirmation dialog returns. */
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
+    }
+
     fun onDeleteResult(confirmed: Boolean): Boolean {
         val item = _uiState.value.pendingDeleteItem
         _uiState.update { it.copy(pendingDeleteItem = null) }

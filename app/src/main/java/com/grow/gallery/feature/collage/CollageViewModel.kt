@@ -10,7 +10,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import coil.ImageLoader
+import coil.Coil
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.grow.gallery.core.media.MediaItem
@@ -66,13 +66,20 @@ class CollageViewModel @Inject constructor(
         viewModelScope.launch {
             _uiState.update { it.copy(isSaving = true) }
             try {
-                val canvasSize = 1200
                 val gap = 4
-                val cellW = (canvasSize - gap * (layout.columns - 1)) / layout.columns
-                val cellH = (canvasSize - gap * (layout.rows - 1)) / layout.rows
-                val output = Bitmap.createBitmap(canvasSize, canvasSize, Bitmap.Config.ARGB_8888)
+                // Compute canvas dimensions to match the layout's column/row ratio
+                val canvasW = 1200
+                val canvasH = if (layout.columns != layout.rows) {
+                    (canvasW * layout.rows.toFloat() / layout.columns.toFloat()).toInt().coerceAtLeast(1)
+                } else {
+                    canvasW
+                }
+                val cellW = (canvasW - gap * (layout.columns - 1)) / layout.columns
+                val cellH = (canvasH - gap * (layout.rows - 1)) / layout.rows
+                val output = Bitmap.createBitmap(canvasW, canvasH, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(output)
-                val imageLoader = ImageLoader(context)
+                // Use the app-wide singleton Coil loader to share memory/disk cache
+                val imageLoader = Coil.imageLoader(context)
 
                 items.forEachIndexed { idx, item ->
                     // Column-major order to match CollagePreview
@@ -88,11 +95,26 @@ class CollageViewModel @Inject constructor(
                     val result = imageLoader.execute(request)
                     if (result is SuccessResult) {
                         val bm = (result.drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
-                            ?: return@forEachIndexed
-                        val left = col * (cellW + gap)
-                        val top = row * (cellH + gap)
-                        val dst = Rect(left, top, left + cellW, top + cellH)
-                        canvas.drawBitmap(bm, centerCropSrcRect(bm, cellW, cellH), dst, null)
+                        if (bm == null) {
+                            // Non-bitmap drawable (e.g., animated): fill slot with a solid placeholder
+                            val paint = android.graphics.Paint().apply {
+                                color = android.graphics.Color.DKGRAY
+                            }
+                            val left = col * (cellW + gap)
+                            val top = row * (cellH + gap)
+                            canvas.drawRect(
+                                left.toFloat(), top.toFloat(),
+                                (left + cellW).toFloat(), (top + cellH).toFloat(),
+                                paint,
+                            )
+                        } else {
+                            val left = col * (cellW + gap)
+                            val top = row * (cellH + gap)
+                            val dst = Rect(left, top, left + cellW, top + cellH)
+                            canvas.drawBitmap(bm, centerCropSrcRect(bm, cellW, cellH), dst, null)
+                            // Recycle the decoded bitmap immediately; it is no longer needed
+                            bm.recycle()
+                        }
                     }
                 }
 
