@@ -269,7 +269,7 @@ private fun CleanerResults(
                 ) {
                     Icon(Icons.Default.Delete, null)
                     Spacer(Modifier.width(Spacing.sm))
-                    Text("Clean All — Free ${uiState.totalReclaimable}", fontWeight = FontWeight.SemiBold)
+                    Text("Clean All — Free ${uiState.totalAllReclaimable}", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -281,8 +281,6 @@ private fun CleanerCategoryCard(
     category: CleanerCategory,
     onToggle: (Boolean) -> Unit,
 ) {
-    var checked by remember(category.name) { mutableStateOf(category.isSelected) }
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -296,17 +294,15 @@ private fun CleanerCategoryCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Checkbox(
-                checked = checked,
-                onCheckedChange = {
-                    checked = it
-                    onToggle(it)
-                },
+                checked = category.isSelected,
+                onCheckedChange = onToggle,
             )
             Spacer(Modifier.width(Spacing.sm))
             Column(modifier = Modifier.weight(1f)) {
                 Text(category.name, fontWeight = FontWeight.SemiBold)
+                val itemLabel = if (category.itemCount == 1) "item" else "items"
                 Text(
-                    "${category.itemCount} items • ${category.size}",
+                    "${category.itemCount} $itemLabel • ${category.size}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

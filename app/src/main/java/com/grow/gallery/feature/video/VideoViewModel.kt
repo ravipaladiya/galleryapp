@@ -209,7 +209,9 @@ internal fun trimWithMuxer(
                 val buffer = ByteBuffer.allocateDirect(maxInputSize)
                 val bufferInfo = MediaCodec.BufferInfo()
                 val rangeDurationUs = ((endMs - startMs) * 1000L).coerceAtLeast(1L)
-                var lastPtsUs = Long.MIN_VALUE
+                // Per-track PTS dedup map — a single global variable incorrectly drops the
+                // first audio or video sample at PTS=0 when both tracks start simultaneously.
+                val lastPtsPerTrack = mutableMapOf<Int, Long>()
 
                 while (true) {
                     val trackIndex = extractor.sampleTrackIndex
@@ -228,12 +230,13 @@ internal fun trimWithMuxer(
                     if (bufferInfo.size < 0) break
 
                     val rebased = (sampleTimeUs - startMs * 1000L).coerceAtLeast(0L)
-                    // Deduplicate PTS=0 samples that arise from pre-cut keyframe samples
-                    if (rebased <= lastPtsUs && rebased == 0L) {
+                    val lastPts = lastPtsPerTrack[muxerTrackIndex] ?: Long.MIN_VALUE
+                    // Deduplicate PTS=0 samples per-track to avoid dropping legitimate first frames
+                    if (rebased <= lastPts && rebased == 0L) {
                         extractor.advance()
                         continue
                     }
-                    lastPtsUs = rebased
+                    lastPtsPerTrack[muxerTrackIndex] = rebased
 
                     bufferInfo.offset = 0
                     bufferInfo.presentationTimeUs = rebased

@@ -63,19 +63,14 @@ class StorageViewModel @Inject constructor(
     }
 
     private fun queryMediaSize(uri: android.net.Uri): Long {
-        var total = 0L
+        // Push aggregation into the content provider instead of iterating every row
         context.contentResolver.query(
             uri,
-            arrayOf(MediaStore.MediaColumns.SIZE),
+            arrayOf("SUM(${MediaStore.MediaColumns.SIZE})"),
             null, null, null,
         )?.use { cursor ->
-            val sizeCol = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
-            if (sizeCol >= 0) {
-                while (cursor.moveToNext()) {
-                    total += cursor.getLong(sizeCol)
-                }
-            }
+            if (cursor.moveToFirst()) return cursor.getLong(0)
         }
-        return total
+        return 0L
     }
 }

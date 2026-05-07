@@ -44,10 +44,25 @@ fun TrashScreen(
         viewModel.onDeleteResult(result.resultCode == Activity.RESULT_OK)
     }
 
+    val restoreLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        viewModel.onRestoreResult(result.resultCode == Activity.RESULT_OK)
+    }
+
     LaunchedEffect(uiState.pendingDeleteIntent) {
         uiState.pendingDeleteIntent?.let { pendingIntent ->
             viewModel.onDeleteIntentConsumed()
             deleteLauncher.launch(
+                IntentSenderRequest.Builder(pendingIntent.intentSender).build()
+            )
+        }
+    }
+
+    LaunchedEffect(uiState.pendingRestoreIntent) {
+        uiState.pendingRestoreIntent?.let { pendingIntent ->
+            viewModel.onRestoreIntentConsumed()
+            restoreLauncher.launch(
                 IntentSenderRequest.Builder(pendingIntent.intentSender).build()
             )
         }

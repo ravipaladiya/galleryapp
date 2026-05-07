@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.grow.gallery.core.common.toFormattedSize
 import com.grow.gallery.core.designsystem.*
 import com.grow.gallery.core.designsystem.components.*
 
@@ -69,9 +70,9 @@ fun StorageScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                         ) {
-                            StorageStat("Used", uiState.usedBytes.formatSize(), Brand.Blue)
-                            StorageStat("Free", uiState.freeBytes.formatSize(), Color(0xFF43A047))
-                            StorageStat("Total", uiState.totalBytes.formatSize(), MaterialTheme.colorScheme.onSurfaceVariant)
+                            StorageStat("Used", uiState.usedBytes.toFormattedSize(), Brand.Blue)
+                            StorageStat("Free", uiState.freeBytes.toFormattedSize(), Color(0xFF43A047))
+                            StorageStat("Total", uiState.totalBytes.toFormattedSize(), MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
@@ -82,7 +83,7 @@ fun StorageScreen(
                 StorageTypeRow(
                     icon = Icons.Default.Photo,
                     label = "Photos",
-                    size = uiState.photosBytes.formatSize(),
+                    size = uiState.photosBytes.toFormattedSize(),
                     fraction = if (uiState.totalBytes > 0) uiState.photosBytes.toFloat() / uiState.totalBytes else 0f,
                     color = Brand.Blue,
                 )
@@ -91,7 +92,7 @@ fun StorageScreen(
                 StorageTypeRow(
                     icon = Icons.Default.VideoFile,
                     label = "Videos",
-                    size = uiState.videosBytes.formatSize(),
+                    size = uiState.videosBytes.toFormattedSize(),
                     fraction = if (uiState.totalBytes > 0) uiState.videosBytes.toFloat() / uiState.totalBytes else 0f,
                     color = Color(0xFF7C3AED),
                 )
@@ -101,7 +102,7 @@ fun StorageScreen(
                 StorageTypeRow(
                     icon = Icons.Default.FolderOpen,
                     label = "Other Files",
-                    size = other.formatSize(),
+                    size = other.toFormattedSize(),
                     fraction = if (uiState.totalBytes > 0) other.toFloat() / uiState.totalBytes else 0f,
                     color = Color(0xFFD97706),
                 )
@@ -132,7 +133,15 @@ fun StorageScreen(
 
 @Composable
 private fun StorageProgressBar(usedBytes: Long, totalBytes: Long) {
-    val fraction = (usedBytes.toFloat() / totalBytes.coerceAtLeast(1)).coerceIn(0f, 1f)
+    if (totalBytes <= 0L) {
+        Text(
+            "Storage information unavailable",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    val fraction = (usedBytes.toFloat() / totalBytes).coerceIn(0f, 1f)
     val color = when {
         fraction > 0.9f -> MaterialTheme.colorScheme.error
         fraction > 0.7f -> Color(0xFFD97706)
@@ -220,9 +229,3 @@ private fun StorageTypeRow(
     }
 }
 
-private fun Long.formatSize(): String = when {
-    this >= 1_000_000_000L -> "%.1f GB".format(this / 1_000_000_000.0)
-    this >= 1_000_000L -> "%.1f MB".format(this / 1_000_000.0)
-    this >= 1_000L -> "%.0f KB".format(this / 1_000.0)
-    else -> "$this B"
-}

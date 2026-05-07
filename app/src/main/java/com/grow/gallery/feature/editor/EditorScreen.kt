@@ -14,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +40,7 @@ data class EditorTool(
 fun EditorScreen(
     mediaId: Long,
     onNavigateUp: () -> Unit,
+    onOpenPremium: () -> Unit = {},
     viewModel: EditorViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -46,8 +49,9 @@ fun EditorScreen(
 
     LaunchedEffect(mediaId) { viewModel.loadMedia(mediaId) }
 
-    LaunchedEffect(uiState.isSaved) {
-        if (uiState.isSaved) {
+    // Use a one-shot state key to avoid race on isSaved flip-back
+    LaunchedEffect(uiState.savedUri) {
+        if (uiState.isSaved && uiState.savedUri != null) {
             showSaveSuccessDialog = true
             viewModel.onSavedHandled()
         }
@@ -65,6 +69,19 @@ fun EditorScreen(
         )
     }
 
+    // Build live preview ColorFilter from current adjustments + filter preset
+    val previewColorFilter = remember(uiState.brightness, uiState.contrast, uiState.saturation, uiState.filterName) {
+        val hasWork = uiState.brightness != 0f || uiState.contrast != 0f ||
+                uiState.saturation != 0f || uiState.filterName != "None"
+        if (hasWork) {
+            val matrix = viewModel.buildColorMatrix(uiState)
+            val composeMatrix = matrix.array
+            ColorFilter.colorMatrix(ColorMatrix(composeMatrix))
+        } else {
+            null
+        }
+    }
+
     Scaffold(
         topBar = {
             GalleryTopBar(
@@ -80,8 +97,16 @@ fun EditorScreen(
                             color = Brand.Blue,
                         )
                     } else {
-                        TextButton(onClick = viewModel::resetAdjustments) {
-                            Text("Reset")
+                        val hasAdjustments = viewModel.hasAdjustments()
+                        TextButton(
+                            onClick = viewModel::resetAdjustments,
+                            enabled = hasAdjustments,
+                        ) {
+                            Text(
+                                "Reset",
+                                color = if (hasAdjustments) Brand.Blue
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            )
                         }
                         TextButton(onClick = viewModel::saveImage) {
                             Text("Save", fontWeight = FontWeight.SemiBold, color = Brand.Blue)
@@ -96,7 +121,7 @@ fun EditorScreen(
                 .fillMaxSize()
                 .padding(paddingValues),
         ) {
-            // Image preview
+            // Image preview with live color adjustments applied
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -113,7 +138,40 @@ fun EditorScreen(
                         contentDescription = null,
                         contentScale = ContentScale.Fit,
                         modifier = Modifier.fillMaxSize(),
+                        colorFilter = previewColorFilter,
                     )
+                    // Crop ratio overlay indicator
+                    if (uiState.cropRatio != "Free") {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(Spacing.sm)
+                                .background(Brand.Blue.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = Spacing.sm, vertical = 2.dp),
+                        ) {
+                            Text(
+                                uiState.cropRatio,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = androidx.compose.ui.graphics.Color.White,
+                            )
+                        }
+                    }
+                    // Sharpness indicator (can't show in real-time with ColorFilter)
+                    if (uiState.sharpness > 0.01f) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(Spacing.sm)
+                                .background(Brand.Blue.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = Spacing.sm, vertical = 2.dp),
+                        ) {
+                            Text(
+                                "Sharpen: ${"%.1f".format(uiState.sharpness)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = androidx.compose.ui.graphics.Color.White,
+                            )
+                        }
+                    }
                 }
                 if (uiState.isProcessing) {
                     Box(
@@ -138,6 +196,7 @@ fun EditorScreen(
                     uiState = uiState,
                     viewModel = viewModel,
                     onClose = { selectedTool = null },
+                    onOpenPremium = onOpenPremium,
                 )
             }
 
@@ -226,6 +285,7 @@ private fun EditorToolOptions(
     uiState: EditorUiState,
     viewModel: EditorViewModel,
     onClose: () -> Unit,
+    onOpenPremium: () -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxWidth(), tonalElevation = 3.dp) {
         Column(modifier = Modifier.padding(Spacing.lg)) {
@@ -246,18 +306,36 @@ private fun EditorToolOptions(
                     shape = MaterialTheme.shapes.small,
                     color = Brand.GoldStart.copy(alpha = 0.15f),
                 ) {
-                    Text(
-                        "✨ Premium feature — Upgrade to unlock",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Brand.GoldEnd,
-                        modifier = Modifier.padding(Spacing.sm),
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(Spacing.sm),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "✨ Premium feature",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Brand.GoldEnd,
+                        )
+                        TextButton(
+                            onClick = onOpenPremium,
+                            contentPadding = PaddingValues(horizontal = Spacing.sm, vertical = 2.dp),
+                        ) {
+                            Text(
+                                "Upgrade",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Brand.GoldEnd,
+                            )
+                        }
+                    }
                 }
             } else {
                 when (tool.id) {
                     "adjust" -> AdjustOptions(uiState = uiState, viewModel = viewModel)
-                    "crop" -> CropOptions()
-                    "filter" -> FilterOptions()
+                    "crop" -> CropOptions(selectedRatio = uiState.cropRatio, onSelect = viewModel::setCropRatio)
+                    "filter" -> FilterOptions(selectedFilter = uiState.filterName, onSelect = viewModel::setFilter)
                     else -> Text(
                         "${tool.label} options",
                         style = MaterialTheme.typography.bodySmall,
@@ -302,14 +380,13 @@ private fun AdjustOptions(uiState: EditorUiState, viewModel: EditorViewModel) {
 }
 
 @Composable
-private fun CropOptions() {
+private fun CropOptions(selectedRatio: String, onSelect: (String) -> Unit) {
     val ratios = listOf("Free", "1:1", "4:3", "16:9", "3:2", "9:16")
-    var selected by remember { mutableStateOf("Free") }
-    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-        ratios.forEach { ratio ->
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        items(ratios) { ratio ->
             FilterChip(
-                selected = selected == ratio,
-                onClick = { selected = ratio },
+                selected = selectedRatio == ratio,
+                onClick = { onSelect(ratio) },
                 label = { Text(ratio, style = MaterialTheme.typography.labelSmall) },
             )
         }
@@ -317,14 +394,13 @@ private fun CropOptions() {
 }
 
 @Composable
-private fun FilterOptions() {
+private fun FilterOptions(selectedFilter: String, onSelect: (String) -> Unit) {
     val filters = listOf("None", "Vivid", "Warm", "Cool", "B&W", "Fade", "Chrome")
-    var selected by remember { mutableStateOf("None") }
     LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         items(filters) { filter ->
             FilterChip(
-                selected = selected == filter,
-                onClick = { selected = filter },
+                selected = selectedFilter == filter,
+                onClick = { onSelect(filter) },
                 label = { Text(filter, style = MaterialTheme.typography.labelSmall) },
             )
         }

@@ -1,6 +1,7 @@
 package com.grow.gallery.feature.trash
 
 import android.app.PendingIntent
+import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -22,6 +23,8 @@ data class TrashUiState(
     val isLoading: Boolean = true,
     val pendingDeleteIntent: PendingIntent? = null,
     val pendingDeleteItem: TrashItem? = null,
+    val pendingRestoreIntent: PendingIntent? = null,
+    val pendingRestoreItem: TrashItem? = null,
     val snackbarMessage: String? = null,
 )
 
@@ -49,9 +52,64 @@ class TrashViewModel @Inject constructor(
 
     fun restore(item: TrashItem) {
         viewModelScope.launch {
-            trashDao.deleteById(item.mediaId)
-            load()
-            _uiState.update { it.copy(snackbarMessage = "${item.displayName} removed from Recently Deleted.") }
+            val uri = Uri.parse(item.uri)
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                    // API 30+: createTrashRequest with false un-trashes the item
+                    try {
+                        val pendingIntent = MediaStore.createTrashRequest(
+                            context.contentResolver, listOf(uri), false
+                        )
+                        _uiState.update {
+                            it.copy(pendingRestoreIntent = pendingIntent, pendingRestoreItem = item)
+                        }
+                    } catch (_: Exception) {
+                        // URI may no longer exist; remove from DB and inform user
+                        trashDao.deleteById(item.mediaId)
+                        load()
+                        _uiState.update { it.copy(snackbarMessage = "${item.displayName} restored.") }
+                    }
+                }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                    // API 29: update IS_TRASHED = 0 directly
+                    withContext(Dispatchers.IO) {
+                        try {
+                            context.contentResolver.update(
+                                uri,
+                                ContentValues().apply {
+                                    put(MediaStore.Images.Media.IS_TRASHED, 0)
+                                },
+                                null, null,
+                            )
+                        } catch (_: Exception) {}
+                    }
+                    trashDao.deleteById(item.mediaId)
+                    load()
+                    _uiState.update { it.copy(snackbarMessage = "${item.displayName} restored.") }
+                }
+                else -> {
+                    // Pre-Q: no system trash concept, just remove from app DB
+                    trashDao.deleteById(item.mediaId)
+                    load()
+                    _uiState.update { it.copy(snackbarMessage = "${item.displayName} restored.") }
+                }
+            }
+        }
+    }
+
+    fun onRestoreIntentConsumed() {
+        _uiState.update { it.copy(pendingRestoreIntent = null) }
+    }
+
+    fun onRestoreResult(confirmed: Boolean) {
+        val item = _uiState.value.pendingRestoreItem
+        _uiState.update { it.copy(pendingRestoreItem = null) }
+        if (confirmed && item != null) {
+            viewModelScope.launch {
+                trashDao.deleteById(item.mediaId)
+                load()
+                _uiState.update { it.copy(snackbarMessage = "${item.displayName} restored.") }
+            }
         }
     }
 
