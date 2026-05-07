@@ -1,12 +1,11 @@
 package com.grow.gallery.core.common
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.core.content.FileProvider
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -25,15 +24,16 @@ fun Long.toFormattedDuration(): String {
     val h = totalSec / 3600
     val m = (totalSec % 3600) / 60
     val s = totalSec % 60
-    return if (h > 0) String.format("%d:%02d:%02d", h, m, s)
-    else String.format("%d:%02d", m, s)
+    return if (h > 0) String.format(Locale.US, "%d:%02d:%02d", h, m, s)
+    else String.format(Locale.US, "%d:%02d", m, s)
 }
 
+// 1024-based to match Android Settings → Storage display
 fun Long.toFormattedSize(): String {
     return when {
-        this >= 1_000_000_000L -> "%.1f GB".format(this / 1_000_000_000.0)
-        this >= 1_000_000L -> "%.1f MB".format(this / 1_000_000.0)
-        this >= 1_000L -> "%.0f KB".format(this / 1_000.0)
+        this >= 1_073_741_824L -> "%.1f GB".format(this / 1_073_741_824.0)
+        this >= 1_048_576L -> "%.1f MB".format(this / 1_048_576.0)
+        this >= 1_024L -> "%.0f KB".format(this / 1_024.0)
         else -> "$this B"
     }
 }
@@ -41,43 +41,60 @@ fun Long.toFormattedSize(): String {
 fun Context.openAppSettings() {
     val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
         data = Uri.fromParts("package", packageName, null)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     startActivity(intent)
 }
 
 fun Context.openMediaManageSettings() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
             data = Uri.fromParts("package", packageName, null)
         }
-        startActivity(intent)
+    } else {
+        // Pre-API-34: open the app details page where the user can manage permissions
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", packageName, null)
+        }
     }
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    startActivity(intent)
 }
 
 fun Context.shareMedia(uri: Uri, mimeType: String) {
     val shareIntent = Intent(Intent.ACTION_SEND).apply {
         type = mimeType
         putExtra(Intent.EXTRA_STREAM, uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        // ClipData is required for per-URI grants to survive the chooser on Android 11+
+        clipData = ClipData.newRawUri("", uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     startActivity(Intent.createChooser(shareIntent, "Share via"))
 }
 
 fun Context.shareMultipleMedia(uris: List<Uri>, mimeType: String = "*/*") {
+    if (uris.isEmpty()) return
     val shareIntent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
         type = mimeType
         putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        clipData = ClipData.newRawUri("", uris.first()).also { cd ->
+            uris.drop(1).forEach { cd.addItem(ClipData.Item(it)) }
+        }
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     startActivity(Intent.createChooser(shareIntent, "Share via"))
 }
 
-fun Context.setAsWallpaper(uri: Uri) {
+fun Context.setAsWallpaper(uri: Uri, mimeType: String = "image/jpeg") {
+    // Resolve wildcard mime to a concrete type so OEM wallpaper pickers accept it
+    val resolvedMime = if (mimeType == "image/*") "image/jpeg" else mimeType
     val intent = Intent(Intent.ACTION_ATTACH_DATA).apply {
-        setDataAndType(uri, "image/*")
+        setDataAndType(uri, resolvedMime)
         addCategory(Intent.CATEGORY_DEFAULT)
-        putExtra("mimeType", "image/*")
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        putExtra("mimeType", resolvedMime)
+        // ClipData carries the URI grant through the chooser (required on API 30+)
+        clipData = ClipData.newRawUri("", uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     startActivity(Intent.createChooser(intent, "Set as…"))
 }

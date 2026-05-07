@@ -16,31 +16,23 @@
         android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
         android:minSdkVersion="34" />
 
-    <!-- Write for managing media (delete, move) -->
+    <!-- Write for managing media (delete, move) on API ≤ 29 -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29"
         tools:ignore="ScopedStorage" />
+
+    <!-- Required for modifying other apps' media without per-file prompts (API 31+) -->
     <uses-permission android:name="android.permission.MANAGE_MEDIA" />
 
-    <!-- Location for map view -->
+    <!-- EXIF location for map view feature -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
     <!-- Biometric for vault -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.USE_FINGERPRINT" />
 
-    <!-- Network for sync/backup -->
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-    <!-- Background work -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-
-    <!-- Sharing -->
+    <!-- Sharing: required to launch the system wallpaper picker -->
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
 
     <application
@@ -53,7 +45,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.GalleryApp"
-        android:hardwareAccelerated="true"
+        android:enableOnBackInvokedCallback="true"
         tools:targetApi="31">
 
         <activity
@@ -61,24 +53,30 @@
             android:exported="true"
             android:theme="@style/Theme.GalleryApp.Splash"
             android:windowSoftInputMode="adjustResize"
-            android:configChanges="orientation|screenSize|keyboardHidden">
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode|screenLayout|density|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- VIEW filter for image URIs shared from other apps -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
                 <data android:mimeType="image/*" />
             </intent-filter>
+            <!-- VIEW filter for video URIs shared from other apps -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
                 <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
 
-        <!-- FileProvider for sharing media -->
+        <!-- FileProvider for sharing media via content URIs -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"

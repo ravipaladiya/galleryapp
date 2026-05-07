@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
-    <external-path name="external_files" path="." />
-    <cache-path name="cache_files" path="." />
-    <files-path name="files" path="." />
+    <!-- Scoped to GalleryApp output folder only — prevents granting access to all of external storage -->
+    <external-path name="gallery_movies" path="Movies/GalleryApp/" />
+    <external-path name="gallery_pictures" path="Pictures/GalleryApp/" />
+    <!-- Shared cache for Coil / temporary share files only -->
+    <cache-path name="image_cache" path="image_cache/" />
 </paths>

@@ -250,7 +250,7 @@ fun ViewerScreen(
     if (showSetAsSheet) {
         SetAsSheet(
             onSetAsWallpaper = {
-                uiState.currentItem?.let { context.setAsWallpaper(it.uri) }
+                uiState.currentItem?.let { context.setAsWallpaper(it.uri, it.mimeType) }
                 showSetAsSheet = false
             },
             onDismiss = { showSetAsSheet = false },

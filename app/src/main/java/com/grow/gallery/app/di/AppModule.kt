@@ -21,9 +21,7 @@ object AppModule {
             context,
             GalleryDatabase::class.java,
             "gallery_database",
-        )
-            .fallbackToDestructiveMigration()
-            .build()
+        ).build()
     }
 
     @Provides

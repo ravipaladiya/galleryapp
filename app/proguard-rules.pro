@@ -1,23 +1,22 @@
 -keepattributes *Annotation*
 -keepattributes SourceFile,LineNumberTable
-
-# Kotlin
--keep class kotlin.** { *; }
--keep class kotlinx.** { *; }
+-renamesourcefileattribute SourceFile
 
 # Hilt
 -keep class dagger.hilt.** { *; }
 -keep class javax.inject.** { *; }
 
-# Room
+# Room — keep Entity classes and DAO interfaces so generated _Impl bindings survive R8
 -keep class * extends androidx.room.RoomDatabase
 -keep @androidx.room.Entity class *
 -keepclassmembers @androidx.room.Entity class * { *; }
+-keep @androidx.room.Dao interface *
+-keepclassmembers @androidx.room.Dao interface * { *; }
 
 # Coil
 -dontwarn coil.**
 
-# Serialization
+# Kotlinx Serialization
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.AnnotationsKt
 -keepclassmembers class kotlinx.serialization.json.** { *** Companion; }

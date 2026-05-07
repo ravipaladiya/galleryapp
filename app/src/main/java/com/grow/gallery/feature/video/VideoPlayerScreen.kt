@@ -18,6 +18,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem as Media3Item
 import androidx.media3.common.Player
@@ -43,10 +46,13 @@ fun VideoPlayerScreen(
     LaunchedEffect(mediaId) { viewModel.loadVideo(mediaId) }
 
     val exoPlayer = remember {
-        ExoPlayer.Builder(context).build().apply {
-            playWhenReady = true
-            repeatMode = Player.REPEAT_MODE_OFF
-        }
+        ExoPlayer.Builder(context)
+            .setSeekBackIncrementMs(10_000L)
+            .setSeekForwardIncrementMs(10_000L)
+            .build().apply {
+                playWhenReady = true
+                repeatMode = Player.REPEAT_MODE_OFF
+            }
     }
 
     // Sync isPlaying state with player via listener
@@ -75,8 +81,21 @@ fun VideoPlayerScreen(
         }
     }
 
-    DisposableEffect(Unit) {
-        onDispose { exoPlayer.release() }
+    // Pause when backgrounded, resume on foreground, release on disposal
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, exoPlayer) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> exoPlayer.pause()
+                Lifecycle.Event.ON_RESUME -> { /* let user resume manually */ }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            exoPlayer.release()
+        }
     }
 
     Box(

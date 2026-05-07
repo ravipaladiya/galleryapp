@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
+    <!-- Vault PIN/preferences must never leave the device -->
     <exclude domain="sharedpref" path="vault_prefs.xml" />
-    <exclude domain="database" path="gallery_vault.db" />
+    <!-- The gallery DB holds vault index and custom albums — exclude to protect privacy -->
+    <exclude domain="database" path="gallery_database" />
+    <!-- Encrypted vault blobs in internal files dir -->
+    <exclude domain="file" path="vault" />
 </full-backup-content>

@@ -121,9 +121,13 @@ fun SlideshowScreen(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(onClick = {
-                        currentIndex = (currentIndex - 1 + uiState.items.size) % uiState.items.size
-                    }) {
+                    IconButton(
+                        onClick = {
+                            val size = uiState.items.size
+                            if (size > 0) currentIndex = (currentIndex - 1 + size) % size
+                        },
+                        enabled = uiState.items.isNotEmpty(),
+                    ) {
                         Icon(Icons.Default.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(32.dp))
                     }
                     Spacer(Modifier.width(Spacing.xl))
@@ -139,9 +143,13 @@ fun SlideshowScreen(
                         )
                     }
                     Spacer(Modifier.width(Spacing.xl))
-                    IconButton(onClick = {
-                        currentIndex = (currentIndex + 1) % uiState.items.size
-                    }) {
+                    IconButton(
+                        onClick = {
+                            val size = uiState.items.size
+                            if (size > 0) currentIndex = (currentIndex + 1) % size
+                        },
+                        enabled = uiState.items.isNotEmpty(),
+                    ) {
                         Icon(Icons.Default.SkipNext, "Next", tint = Color.White, modifier = Modifier.size(32.dp))
                     }
                 }

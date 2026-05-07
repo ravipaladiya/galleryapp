@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Base64
 import androidx.biometric.BiometricManager
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
@@ -14,12 +15,15 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.KeyStore
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.CipherInputStream
 import javax.crypto.CipherOutputStream
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,6 +44,9 @@ class VaultManager @Inject constructor(
         private const val VAULT_DIR = "vault"
         private const val GCM_IV_SIZE = 12
         private const val GCM_TAG_SIZE = 128
+        private const val PBKDF2_ITERATIONS = 200_000
+        private const val PBKDF2_KEY_LENGTH = 256
+        private const val SALT_LENGTH = 32
     }
 
     val isVaultEnabled: Flow<Boolean> = dataStore.data.map { it[KEY_VAULT_ENABLED] ?: false }
@@ -61,8 +68,8 @@ class VaultManager @Inject constructor(
     }
 
     suspend fun verifyPin(pin: String): Boolean {
-        val storedHash = dataStore.data.first()[KEY_PIN_HASH] ?: return false
-        return hashPin(pin) == storedHash
+        val stored = dataStore.data.first()[KEY_PIN_HASH] ?: return false
+        return verifyPbkdf2(pin, stored)
     }
 
     suspend fun enableBiometric(enabled: Boolean) {
@@ -76,15 +83,14 @@ class VaultManager @Inject constructor(
     fun isBiometricAvailable(): Boolean {
         val biometricManager = BiometricManager.from(context)
         return biometricManager.canAuthenticate(
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
+            BiometricManager.Authenticators.BIOMETRIC_STRONG
         ) == BiometricManager.BIOMETRIC_SUCCESS
     }
 
     /**
      * Copies a media file from [sourceUri] into the app's private vault directory,
      * encrypted with AES-GCM using the Android Keystore key.
-     * Returns the vault file path (relative to vault dir) or null on failure.
+     * Returns the vault file name or null on failure.
      */
     suspend fun addToVault(sourceUri: Uri, originalName: String): String? =
         withContext(Dispatchers.IO) {
@@ -113,8 +119,8 @@ class VaultManager @Inject constructor(
         }
 
     /**
-     * Opens an encrypted vault file for reading (returns an InputStream).
-     * Caller is responsible for closing the stream.
+     * Opens an encrypted vault file for reading.
+     * Caller is responsible for closing the returned stream.
      */
     fun openVaultFile(vaultFileName: String): java.io.InputStream? {
         return try {
@@ -131,7 +137,6 @@ class VaultManager @Inject constructor(
         }
     }
 
-    /** Deletes an encrypted vault file from internal storage. */
     fun deleteVaultFile(vaultFileName: String) {
         File(File(context.filesDir, VAULT_DIR), vaultFileName).delete()
     }
@@ -139,10 +144,31 @@ class VaultManager @Inject constructor(
     private fun sanitize(name: String): String =
         name.replace(Regex("[^a-zA-Z0-9._-]"), "_").take(40)
 
+    // Format: base64(salt || hash) — self-contained, salt is unique per PIN setup
     private fun hashPin(pin: String): String {
-        val bytes = pin.toByteArray()
-        val digest = java.security.MessageDigest.getInstance("SHA-256")
-        return digest.digest(bytes).joinToString("") { "%02x".format(it) }
+        val salt = ByteArray(SALT_LENGTH).also { SecureRandom().nextBytes(it) }
+        val hash = pbkdf2(pin, salt)
+        return Base64.encodeToString(salt + hash, Base64.NO_WRAP)
+    }
+
+    private fun verifyPbkdf2(pin: String, stored: String): Boolean {
+        return try {
+            val decoded = Base64.decode(stored, Base64.NO_WRAP)
+            if (decoded.size < SALT_LENGTH + 1) return false
+            val salt = decoded.copyOf(SALT_LENGTH)
+            val storedHash = decoded.copyOfRange(SALT_LENGTH, decoded.size)
+            val candidateHash = pbkdf2(pin, salt)
+            // Constant-time compare to resist timing attacks
+            candidateHash.size == storedHash.size &&
+                    candidateHash.zip(storedHash).fold(0) { acc, (a, b) -> acc or (a.toInt() xor b.toInt()) } == 0
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun pbkdf2(pin: String, salt: ByteArray): ByteArray {
+        val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS, PBKDF2_KEY_LENGTH)
+        return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
     }
 
     private fun getOrCreateSecretKey(): SecretKey {
