@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -8,6 +10,14 @@ plugins {
     alias(libs.plugins.androidx.room)
 }
 
+// Read version from version.properties (#H-BG2)
+val versionProps = Properties().also { props ->
+    val file = rootProject.file("version.properties")
+    if (file.exists()) props.load(file.inputStream())
+}
+val appVersionCode = versionProps.getProperty("VERSION_CODE", "1").toInt()
+val appVersionName = versionProps.getProperty("VERSION_NAME", "1.0.0")
+
 android {
     namespace = "com.grow.gallery"
     compileSdk = 35
@@ -16,9 +26,26 @@ android {
         applicationId = "com.grow.gallery"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            val keystorePath = System.getenv("KEYSTORE_PATH")
+                ?: (project.findProperty("KEYSTORE_PATH") as String?)
+            val keystoreFile = keystorePath?.let { rootProject.file(it) }
+            if (keystoreFile != null && keystoreFile.exists()) {
+                storeFile = keystoreFile
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                    ?: (project.findProperty("KEYSTORE_PASSWORD") as String? ?: "")
+                keyAlias = System.getenv("KEY_ALIAS")
+                    ?: (project.findProperty("KEY_ALIAS") as String? ?: "")
+                keyPassword = System.getenv("KEY_PASSWORD")
+                    ?: (project.findProperty("KEY_PASSWORD") as String? ?: "")
+            }
+        }
     }
 
     buildTypes {
@@ -29,6 +56,10 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            val releaseConfig = signingConfigs.getByName("release")
+            if (releaseConfig.storeFile?.exists() == true) {
+                signingConfig = releaseConfig
+            }
         }
         debug {
             isMinifyEnabled = false
@@ -54,6 +85,13 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+
+    lint {
+        abortOnError = false
+        warningsAsErrors = false
+        xmlReport = true
+        htmlReport = true
     }
 }
 

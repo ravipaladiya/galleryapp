@@ -122,14 +122,21 @@ class TrashViewModel @Inject constructor(
                         context.contentResolver, listOf(uri)
                     )
                     _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = item) }
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    // URI likely gone — clean up the DB entry and inform the user
                     deleteFromDbOnly(item)
+                    _uiState.update { it.copy(snackbarMessage = "Could not delete: ${e.message}") }
                 }
             } else {
-                withContext(Dispatchers.IO) {
-                    try { context.contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                val deleteError = withContext(Dispatchers.IO) {
+                    try { context.contentResolver.delete(uri, null, null); null }
+                    catch (e: Exception) { e.message }
                 }
-                deleteFromDbOnly(item)
+                if (deleteError != null) {
+                    _uiState.update { it.copy(snackbarMessage = "Delete failed: $deleteError") }
+                } else {
+                    deleteFromDbOnly(item)
+                }
             }
         }
     }
@@ -164,15 +171,22 @@ class TrashViewModel @Inject constructor(
                     val pendingIntent = MediaStore.createDeleteRequest(context.contentResolver, uris)
                     _uiState.update { it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteItem = null) }
                     return@launch
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    _uiState.update { it.copy(snackbarMessage = "Could not delete: ${e.message}") }
+                    return@launch
+                }
             }
+            var errorCount = 0
             withContext(Dispatchers.IO) {
                 items.forEach { item ->
-                    try { context.contentResolver.delete(Uri.parse(item.uri), null, null) } catch (_: Exception) {}
+                    try { context.contentResolver.delete(Uri.parse(item.uri), null, null) }
+                    catch (_: Exception) { errorCount++ }
                 }
             }
             emptyTrashFromDbOnly()
-            _uiState.update { it.copy(snackbarMessage = "Trash emptied.") }
+            val msg = if (errorCount > 0) "Trash emptied ($errorCount file(s) could not be deleted)."
+                      else "Trash emptied."
+            _uiState.update { it.copy(snackbarMessage = msg) }
         }
     }
 

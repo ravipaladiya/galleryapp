@@ -1,8 +1,12 @@
 package com.grow.gallery.core.database
 
 import androidx.room.*
+import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Entity(tableName = "trash_items")
+@Entity(
+    tableName = "trash_items",
+    indices = [Index("expiresAt")],
+)
 data class TrashItem(
     @PrimaryKey val mediaId: Long,
     val uri: String,
@@ -10,12 +14,15 @@ data class TrashItem(
     val mimeType: String,
     val size: Long,
     val originalPath: String,
-    val deletedAt: Long = System.currentTimeMillis(),
-    val expiresAt: Long = deletedAt + 30L * 24 * 60 * 60 * 1000,
+    val deletedAt: Long,
+    val expiresAt: Long,
     val thumbnailPath: String? = null,
 )
 
-@Entity(tableName = "vault_items")
+@Entity(
+    tableName = "vault_items",
+    indices = [Index("addedAt")],
+)
 data class VaultItem(
     @PrimaryKey val mediaId: Long,
     val encryptedUri: String,
@@ -36,6 +43,13 @@ data class CustomAlbum(
 @Entity(
     tableName = "album_media",
     primaryKeys = ["albumId", "mediaId"],
+    foreignKeys = [ForeignKey(
+        entity = CustomAlbum::class,
+        parentColumns = ["id"],
+        childColumns = ["albumId"],
+        onDelete = ForeignKey.CASCADE,
+    )],
+    indices = [Index("albumId")],
 )
 data class AlbumMediaCrossRef(
     val albumId: Long,
@@ -109,9 +123,34 @@ interface AlbumDao {
     suspend fun getMediaCount(albumId: Long): Int
 }
 
+val MIGRATION_1_2 = object : Migration(1, 2) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        // Add expiresAt index to trash_items
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_trash_items_expiresAt` ON `trash_items` (`expiresAt`)")
+
+        // Add addedAt index to vault_items
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_vault_items_addedAt` ON `vault_items` (`addedAt`)")
+
+        // Recreate album_media with FK + albumId index
+        database.execSQL(
+            """CREATE TABLE IF NOT EXISTS `album_media_new` (
+                `albumId` INTEGER NOT NULL,
+                `mediaId` INTEGER NOT NULL,
+                `addedAt` INTEGER NOT NULL,
+                PRIMARY KEY(`albumId`, `mediaId`),
+                FOREIGN KEY(`albumId`) REFERENCES `custom_albums`(`id`) ON DELETE CASCADE
+            )"""
+        )
+        database.execSQL("INSERT INTO `album_media_new` SELECT * FROM `album_media`")
+        database.execSQL("DROP TABLE `album_media`")
+        database.execSQL("ALTER TABLE `album_media_new` RENAME TO `album_media`")
+        database.execSQL("CREATE INDEX IF NOT EXISTS `index_album_media_albumId` ON `album_media` (`albumId`)")
+    }
+}
+
 @Database(
     entities = [TrashItem::class, VaultItem::class, CustomAlbum::class, AlbumMediaCrossRef::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class GalleryDatabase : RoomDatabase() {

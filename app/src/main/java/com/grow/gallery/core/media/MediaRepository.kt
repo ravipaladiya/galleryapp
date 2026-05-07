@@ -13,8 +13,10 @@ import android.os.Looper
 import android.provider.MediaStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
@@ -53,7 +55,7 @@ class MediaRepository @Inject constructor(
         contentResolver.registerContentObserver(imageCollection, true, observer)
         contentResolver.registerContentObserver(videoCollection, true, observer)
         awaitClose { contentResolver.unregisterContentObserver(observer) }
-    }.flowOn(Dispatchers.IO)
+    }.buffer(Channel.CONFLATED).flowOn(Dispatchers.IO)
 
     suspend fun loadMedia(query: MediaQuery): List<MediaGroup> = withContext(Dispatchers.IO) {
         val items = mutableListOf<MediaItem>()
@@ -141,6 +143,7 @@ class MediaRepository @Inject constructor(
             val widthCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.WIDTH)
             val heightCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.HEIGHT)
             val dateAddedCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_ADDED)
+            val dateModifiedCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DATE_MODIFIED)
             val dateTakenCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                 cursor.getColumnIndex(MediaStore.Images.Media.DATE_TAKEN) else -1
             val bucketIdCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.BUCKET_ID)
@@ -162,7 +165,7 @@ class MediaRepository @Inject constructor(
                         height = cursor.getInt(heightCol),
                         dateAdded = cursor.getLong(dateAddedCol),
                         dateTaken = if (dateTakenCol >= 0) cursor.getLong(dateTakenCol) / 1000 else null,
-                        dateModified = cursor.getLong(dateAddedCol),
+                        dateModified = cursor.getLong(dateModifiedCol),
                         bucketId = cursor.getLong(bucketIdCol),
                         bucketName = cursor.getString(bucketNameCol) ?: "",
                         isFavorite = isFavCol >= 0 && cursor.getInt(isFavCol) == 1,
@@ -206,6 +209,7 @@ class MediaRepository @Inject constructor(
             val widthCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
             val heightCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
             val dateAddedCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+            val dateModifiedCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
             val durationCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
             val dateTakenCol = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                 cursor.getColumnIndex(MediaStore.Video.Media.DATE_TAKEN) else -1
@@ -228,7 +232,7 @@ class MediaRepository @Inject constructor(
                         height = cursor.getInt(heightCol),
                         dateAdded = cursor.getLong(dateAddedCol),
                         dateTaken = if (dateTakenCol >= 0) cursor.getLong(dateTakenCol) / 1000 else null,
-                        dateModified = cursor.getLong(dateAddedCol),
+                        dateModified = cursor.getLong(dateModifiedCol),
                         duration = cursor.getLong(durationCol),
                         bucketId = cursor.getLong(bucketIdCol),
                         bucketName = cursor.getString(bucketNameCol) ?: "",
@@ -301,19 +305,21 @@ class MediaRepository @Inject constructor(
                 mediaCount = data.third,
                 bucketId = id,
             )
-        }.sortedByDescending { it.mediaCount }
+        }.sortedWith(compareByDescending<Album> { it.mediaCount }.thenBy { it.name })
     }
 
     /**
-     * On Android R+ (API 30+): returns a PendingIntent the screen must launch via
-     * StartIntentSenderForResult — the system shows a confirmation dialog.
-     * On older devices: deletes directly and returns null.
+     * On Android R+ (API 30+): returns a PendingIntent for a system soft-trash dialog.
+     * Items moved to trash can be restored within 30 days via createTrashRequest(uris, false).
+     * On older devices: hard-deletes directly and returns null.
      */
     suspend fun prepareDelete(items: List<MediaItem>): PendingIntent? = withContext(Dispatchers.IO) {
+        // Deduplicate URIs to avoid the system dialog showing wrong counts (#H-MR6)
+        val uris = items.distinctBy { it.uri }.map { it.uri }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            MediaStore.createDeleteRequest(contentResolver, items.map { it.uri })
+            MediaStore.createTrashRequest(contentResolver, uris, true)
         } else {
-            items.forEach { contentResolver.delete(it.uri, null, null) }
+            uris.forEach { contentResolver.delete(it, null, null) }
             null
         }
     }

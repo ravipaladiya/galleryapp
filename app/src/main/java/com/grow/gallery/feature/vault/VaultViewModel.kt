@@ -16,6 +16,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.security.SecureRandom
 import javax.inject.Inject
 
 data class VaultUiState(
@@ -30,6 +31,8 @@ data class VaultUiState(
     val pendingDeleteUris: List<Uri> = emptyList(),
     val snackbarMessage: String? = null,
     val isBiometricAvailable: Boolean = false,
+    /** Incremented on wrong PIN so the screen can reset its local pin field. */
+    val pinResetSignal: Int = 0,
 )
 
 @HiltViewModel
@@ -42,6 +45,8 @@ class VaultViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(VaultUiState())
     val uiState: StateFlow<VaultUiState> = _uiState.asStateFlow()
+
+    private val secureRandom = SecureRandom()
 
     init {
         viewModelScope.launch {
@@ -75,18 +80,23 @@ class VaultViewModel @Inject constructor(
                 val items = vaultDao.getAllVaultItems()
                 _uiState.update { it.copy(isUnlocked = true, vaultItems = items, error = null) }
             } else {
-                _uiState.update { it.copy(error = "Incorrect PIN. Try again.") }
+                _uiState.update { state ->
+                    state.copy(
+                        error = "Incorrect PIN. Try again.",
+                        pinResetSignal = state.pinResetSignal + 1,
+                    )
+                }
             }
         }
     }
 
-
-    // Challenge token prevents programmatic bypasses; generated fresh each time the lock screen
-    // calls prepareBiometricChallenge() and consumed on first use.
+    // Challenge token prevents programmatic bypasses; generated via SecureRandom (#H-V1)
     @Volatile private var biometricToken: Long = 0L
 
     fun prepareBiometricChallenge(): Long {
-        biometricToken = System.nanoTime().let { if (it == 0L) -1L else it }
+        var token: Long
+        do { token = secureRandom.nextLong() } while (token == 0L)
+        biometricToken = token
         return biometricToken
     }
 
@@ -94,8 +104,12 @@ class VaultViewModel @Inject constructor(
         if (token == 0L || token != biometricToken) return
         biometricToken = 0L
         viewModelScope.launch {
-            val items = vaultDao.getAllVaultItems()
-            _uiState.update { it.copy(isUnlocked = true, vaultItems = items, error = null) }
+            try {
+                val items = vaultDao.getAllVaultItems()
+                _uiState.update { it.copy(isUnlocked = true, vaultItems = items, error = null) }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(error = "Failed to load vault. Please try again.") }
+            }
         }
     }
 
@@ -113,6 +127,7 @@ class VaultViewModel @Inject constructor(
             _uiState.update { it.copy(isImporting = true) }
             val importedUris = mutableListOf<Uri>()
             var successCount = 0
+            var failCount = 0
 
             for ((index, uri) in uris.withIndex()) {
                 try {
@@ -121,12 +136,15 @@ class VaultViewModel @Inject constructor(
 
                     val vaultFileName = vaultManager.addToVault(uri, displayName)
                     if (vaultFileName != null) {
-                        // Extract numeric ID robustly: "image:1234" → 1234,
-                        // or fall back to timestamp+index to prevent same-millisecond collisions.
+                        // Extract numeric ID; use SecureRandom fallback to prevent collisions (#H-V2)
                         val mediaId = uri.lastPathSegment
                             ?.substringAfterLast(":")
                             ?.toLongOrNull()
-                            ?: (System.currentTimeMillis() * 1000 + index)
+                            ?: run {
+                                var id: Long
+                                do { id = secureRandom.nextLong() } while (id <= 0)
+                                id
+                            }
                         vaultDao.insertVaultItem(
                             VaultItem(
                                 mediaId = mediaId,
@@ -137,22 +155,26 @@ class VaultViewModel @Inject constructor(
                         )
                         importedUris.add(uri)
                         successCount++
+                    } else {
+                        failCount++
                     }
-                } catch (_: Exception) {}
+                } catch (_: Exception) {
+                    failCount++
+                }
             }
 
-            // Request deletion of originals from MediaStore
             if (importedUris.isNotEmpty()) {
                 requestDeleteOriginals(importedUris)
             }
 
             val items = vaultDao.getAllVaultItems()
+            val message = when {
+                failCount == 0 -> "$successCount photo(s) moved to vault"
+                successCount > 0 -> "$successCount of ${uris.size} photo(s) moved to vault ($failCount failed)"
+                else -> "Import failed"
+            }
             _uiState.update {
-                it.copy(
-                    isImporting = false,
-                    vaultItems = items,
-                    snackbarMessage = if (successCount > 0) "$successCount photo(s) moved to vault" else "Import failed",
-                )
+                it.copy(isImporting = false, vaultItems = items, snackbarMessage = message)
             }
         }
     }
@@ -164,10 +186,16 @@ class VaultViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(pendingDeleteIntent = pendingIntent, pendingDeleteUris = uris)
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                _uiState.update { it.copy(snackbarMessage = "Photos added to vault but originals could not be deleted") }
+            }
         } else {
+            var deleteErrors = 0
             uris.forEach {
-                try { context.contentResolver.delete(it, null, null) } catch (_: Exception) {}
+                try { context.contentResolver.delete(it, null, null) } catch (_: Exception) { deleteErrors++ }
+            }
+            if (deleteErrors > 0) {
+                _uiState.update { it.copy(snackbarMessage = "Photos added to vault ($deleteErrors originals could not be deleted)") }
             }
         }
     }
@@ -185,8 +213,11 @@ class VaultViewModel @Inject constructor(
 
     fun removeFromVault(item: VaultItem) {
         viewModelScope.launch {
-            vaultManager.deleteVaultFile(item.encryptedUri)
+            // Delete DB row first — if process dies after this but before file delete,
+            // the item is gone from UI. Orphaned encrypted file is acceptable; ghost DB
+            // entry is not (#H-V3).
             vaultDao.deleteById(item.mediaId)
+            vaultManager.deleteVaultFile(item.encryptedUri)
             val items = vaultDao.getAllVaultItems()
             _uiState.update { it.copy(vaultItems = items, snackbarMessage = "${item.displayName} removed from vault") }
         }
